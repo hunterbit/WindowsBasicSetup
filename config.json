@@ -1,0 +1,24 @@
+{
+  "interactive": true,
+  "apps": [
+    { "id": "googlechrome",        "name": "Google Chrome",            "selected": true },
+    { "id": "firefox",             "name": "Mozilla Firefox",          "selected": true },
+    { "id": "vlc",                 "name": "VLC media player",         "selected": true },
+    { "id": "hwinfo",              "name": "HWiNFO",                   "selected": true },
+    { "id": "k-litecodecpackmega", "name": "K-Lite Codec Pack Mega",   "selected": true },
+    { "id": "7zip",                "name": "7-Zip",                    "selected": true },
+    { "id": "everything",          "name": "Everything",               "selected": true },
+    { "id": "teracopy",            "name": "TeraCopy",                 "selected": true },
+    { "id": "adobereader",         "name": "Adobe Acrobat Reader",     "selected": true },
+    { "id": "javaruntime",         "name": "Java Runtime Environment", "selected": true },
+    { "id": "notepadplusplus",     "name": "Notepad++",                "selected": true },
+    { "id": "rustdesk.install",    "name": "RustDesk",                 "selected": true }
+  ],
+  "office": {
+    "name": "Microsoft Office 2024 ProPlus",
+    "selected": true,
+    "productId": "ProPlus2024Retail",
+    "language": "it-it",
+    "platform": "x64"
+  }
+}

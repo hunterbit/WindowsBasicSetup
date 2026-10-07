@@ -2,9 +2,20 @@
 #  SETUP AUTOMATICO - setup.ps1
 # ============================================================
 
+#  -Unattended  : salta il menu e installa i programmi con "selected": true
+#  -ConfigPath  : percorso del catalogo programmi (default: config.json accanto allo script)
+param(
+    [switch]$Unattended,
+    [string]$ConfigPath
+)
+
+if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot "config.json" }
+
 # Auto-elevazione admin
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    $elevArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -ConfigPath `"$ConfigPath`""
+    if ($Unattended) { $elevArgs += " -Unattended" }
+    Start-Process powershell -ArgumentList $elevArgs -Verb RunAs
     Exit
 }
 
@@ -14,9 +25,190 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope LocalMachine -Force
 $UpdateMode = [System.Environment]::GetEnvironmentVariable("SETUP_UPDATE_MODE", "Machine")
 
 # ============================================================
+#  SELEZIONE PROGRAMMI - catalogo in config.json, scelta a terminale
+# ============================================================
+
+# Legge config.json e restituisce il flag "interactive" e l'elenco delle voci selezionabili
+function Get-SetupCatalog {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { throw "File di configurazione non trovato: $Path" }
+    try {
+        $config = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        throw "File di configurazione non valido ($Path): $($_.Exception.Message)"
+    }
+
+    $items = @()
+    if ($config.apps) {
+        foreach ($app in @($config.apps)) {
+            if (-not $app.id) { throw "config.json: ogni voce di 'apps' deve avere un 'id' (nome del pacchetto Chocolatey)." }
+            $name = $app.id
+            if ($app.name) { $name = $app.name }
+            $selected = $true
+            if ($null -ne $app.selected) { $selected = [bool]$app.selected }
+            $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Office = $null }
+        }
+    }
+
+    if ($config.office) {
+        $office = [pscustomobject]@{ ProductId = "ProPlus2024Retail"; Language = "it-it"; Platform = "x64" }
+        if ($config.office.productId) { $office.ProductId = [string]$config.office.productId }
+        if ($config.office.language)  { $office.Language  = [string]$config.office.language }
+        if ($config.office.platform)  { $office.Platform  = [string]$config.office.platform }
+        $name = "Microsoft Office"
+        if ($config.office.name) { $name = $config.office.name }
+        $selected = $true
+        if ($null -ne $config.office.selected) { $selected = [bool]$config.office.selected }
+        $label = "{0} ({1}, {2})" -f $name, $office.Language, $office.Platform
+        $items += [pscustomobject]@{ Kind = "office"; Id = $office.ProductId; Label = $label; Selected = $selected; Office = $office }
+    }
+
+    $interactive = $true
+    if ($null -ne $config.interactive) { $interactive = [bool]$config.interactive }
+
+    return [pscustomobject]@{ Interactive = $interactive; Items = $items }
+}
+
+# Scrive una riga occupando tutta la larghezza, cosi' il ridisegno del menu non lascia residui
+function Write-MenuLine {
+    param([string]$Text, [int]$Width, [ConsoleColor]$Color = [ConsoleColor]::Gray)
+
+    if ($Text.Length -gt $Width) { $Text = $Text.Substring(0, $Width) }
+    Write-Host $Text.PadRight($Width) -ForegroundColor $Color
+}
+
+# Menu a caselle: frecce per spostarsi, spazio per selezionare. Modifica .Selected delle voci.
+function Show-AppMenu {
+    param([object[]]$Items)
+
+    $pos   = 0
+    $width = [Math]::Max(20, [Console]::WindowWidth - 1)
+    Clear-Host
+    $top = [Console]::CursorTop
+    try { [Console]::CursorVisible = $false } catch {}
+
+    try {
+        while ($true) {
+            [Console]::SetCursorPosition(0, $top)
+            Write-MenuLine " Seleziona i programmi da installare" $width Cyan
+            Write-MenuLine "" $width
+            for ($i = 0; $i -lt $Items.Count; $i++) {
+                $mark = " "
+                if ($Items[$i].Selected) { $mark = "x" }
+                $pointer = " "
+                $color   = [ConsoleColor]::Gray
+                if ($i -eq $pos) { $pointer = ">"; $color = [ConsoleColor]::Yellow }
+                Write-MenuLine (" {0} [{1}] {2}" -f $pointer, $mark, $Items[$i].Label) $width $color
+            }
+            Write-MenuLine "" $width
+            Write-MenuLine " Su/Giu: sposta   Spazio: seleziona   A: tutti   N: nessuno" $width DarkGray
+            Write-MenuLine " Invio: conferma   Esc: non installare nulla" $width DarkGray
+
+            $key = [Console]::ReadKey($true)
+            switch ($key.Key) {
+                "UpArrow"   { if ($pos -gt 0) { $pos-- } else { $pos = $Items.Count - 1 } }
+                "DownArrow" { if ($pos -lt $Items.Count - 1) { $pos++ } else { $pos = 0 } }
+                "Spacebar"  { $Items[$pos].Selected = -not $Items[$pos].Selected }
+                "A"         { foreach ($item in $Items) { $item.Selected = $true } }
+                "N"         { foreach ($item in $Items) { $item.Selected = $false } }
+                "Enter"     { return }
+                "Escape"    { foreach ($item in $Items) { $item.Selected = $false }; return }
+            }
+        }
+    } finally {
+        try { [Console]::CursorVisible = $true } catch {}
+        Clear-Host
+    }
+}
+
+# Ripiego senza tasti freccia (finestra troppo piccola o input rediretto): si digitano i numeri
+function Read-AppSelection {
+    param([object[]]$Items)
+
+    while ($true) {
+        Write-Host ""
+        Write-Host " Programmi da installare:" -ForegroundColor Cyan
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $mark = " "
+            if ($Items[$i].Selected) { $mark = "x" }
+            Write-Host ("  {0,2}) [{1}] {2}" -f ($i + 1), $mark, $Items[$i].Label)
+        }
+        try {
+            $answer = Read-Host " Numeri da invertire (es. 1,3 5) - INVIO conferma - 0 non installa nulla"
+        } catch {
+            return
+        }
+        if ($null -eq $answer) { return }
+        $answer = $answer.Trim()
+        if ($answer -eq "") { return }
+        if ($answer -eq "0") {
+            foreach ($item in $Items) { $item.Selected = $false }
+            return
+        }
+        foreach ($token in ($answer -split "[,;\s]+")) {
+            $n = 0
+            if ([int]::TryParse($token, [ref]$n) -and $n -ge 1 -and $n -le $Items.Count) {
+                $Items[$n - 1].Selected = -not $Items[$n - 1].Selected
+            }
+        }
+    }
+}
+
+# Sceglie il tipo di menu adatto alla console
+function Select-SetupItems {
+    param([object[]]$Items)
+
+    $useKeys = $false
+    try {
+        $useKeys = (-not [Console]::IsInputRedirected) -and ([Console]::WindowHeight -ge ($Items.Count + 6))
+    } catch {}
+
+    if ($useKeys) { Show-AppMenu -Items $Items } else { Read-AppSelection -Items $Items }
+}
+
+# Installa i pacchetti Chocolatey e restituisce l'elenco di quelli falliti
+function Install-ChocoApps {
+    param([object[]]$Apps)
+
+    $failed = @()
+    foreach ($app in $Apps) {
+        Write-Host "Installazione $($app.Label)..." -ForegroundColor Cyan
+        choco install $app.Id --ignore-checksums -y | Out-Host
+        # 1641 e 3010 = installato, riavvio richiesto
+        if (@(0, 1641, 3010) -notcontains $LASTEXITCODE) { $failed += $app }
+    }
+    return $failed
+}
+
+# ============================================================
 #  BLOCCO PRIMO AVVIO - salta se siamo in post-riavvio update
 # ============================================================
 if ($UpdateMode -ne "1") {
+
+    # ---- SCELTA PROGRAMMI (prima di tutto, cosi' il resto prosegue da solo) ----
+    try {
+        $catalog = Get-SetupCatalog -Path $ConfigPath
+    } catch {
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        Read-Host "Premi INVIO per chiudere"
+        exit 1
+    }
+    $setupItems = @($catalog.Items)
+    if ($setupItems.Count -gt 0 -and $catalog.Interactive -and -not $Unattended) {
+        Select-SetupItems -Items $setupItems
+    }
+    $chocoApps  = @($setupItems | Where-Object { $_.Kind -eq "choco"  -and $_.Selected })
+    $officeItem = $setupItems | Where-Object { $_.Kind -eq "office" -and $_.Selected } | Select-Object -First 1
+
+    $chosen = @($setupItems | Where-Object { $_.Selected })
+    if ($chosen.Count -gt 0) {
+        Write-Host "Programmi da installare:" -ForegroundColor Cyan
+        foreach ($item in $chosen) { Write-Host "  - $($item.Label)" }
+    } else {
+        Write-Host "Nessun programma da installare." -ForegroundColor Yellow
+    }
+    Write-Host ""
 
     # ---- WALLPAPER ----
     Write-Host "Impostazione sfondo..." -ForegroundColor Cyan
@@ -97,42 +289,40 @@ public class Wallpaper {
     bcdedit /set '{current}' numproc $numProcs
     Write-Host "Power plan e boot configurati." -ForegroundColor Green
 
-    # ---- CHOCOLATEY ----
-    Write-Host "Installazione Chocolatey..." -ForegroundColor Cyan
-    Set-ExecutionPolicy Bypass -Scope Process -Force
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-    iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
-    Write-Host "Attesa completamento Chocolatey..." -ForegroundColor Cyan
-    Start-Sleep -Seconds 20
+    if ($chocoApps.Count -gt 0) {
+        # ---- CHOCOLATEY ----
+        Write-Host "Installazione Chocolatey..." -ForegroundColor Cyan
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+        Write-Host "Attesa completamento Chocolatey..." -ForegroundColor Cyan
+        Start-Sleep -Seconds 20
 
-    # ---- PROGRAMMI ----
-    Write-Host "Installazione programmi..." -ForegroundColor Cyan
-    choco install googlechrome        --ignore-checksums -y
-    choco install firefox             --ignore-checksums -y
-    choco install vlc                 --ignore-checksums -y
-    choco install hwinfo              --ignore-checksums -y
-    choco install k-litecodecpackmega --ignore-checksums -y
-    choco install 7zip                --ignore-checksums -y
-    choco install everything          --ignore-checksums -y
-    choco install teracopy            --ignore-checksums -y
-    choco install adobereader         --ignore-checksums -y
-    choco install javaruntime         --ignore-checksums -y
-    choco install notepadplusplus     --ignore-checksums -y
-    choco install rustdesk.install    --ignore-checksums -y
-    Write-Host "Programmi installati." -ForegroundColor Green
+        # ---- PROGRAMMI ----
+        Write-Host "Installazione programmi..." -ForegroundColor Cyan
+        $failedApps = @(Install-ChocoApps -Apps $chocoApps)
+        if ($failedApps.Count -eq 0) {
+            Write-Host "Programmi installati." -ForegroundColor Green
+        } else {
+            Write-Host "Programmi NON installati (errore Chocolatey):" -ForegroundColor Red
+            foreach ($app in $failedApps) { Write-Host "  - $($app.Label) [$($app.Id)]" -ForegroundColor Red }
+        }
+    } else {
+        Write-Host "Nessun pacchetto Chocolatey selezionato: Chocolatey non viene installato." -ForegroundColor Yellow
+    }
 
-    # ---- OFFICE 2024 ----
-    Write-Host "Download Office 2024..." -ForegroundColor Cyan
-    $officeUrl  = "https://c2rsetup.officeapps.live.com/c2r/download.aspx?ProductreleaseID=ProPlus2024Retail&platform=x64&language=it-it&version=O16GA"
-    $officeDest = Join-Path ([Environment]::GetFolderPath("Desktop")) "SetupOffice2024.exe"
-    Invoke-WebRequest -Uri $officeUrl -OutFile $officeDest
-    Write-Host "Avvio installazione Office..." -ForegroundColor Cyan
-    Start-Process -FilePath $officeDest -Wait
-    Remove-Item -Path $officeDest -Force
-    Write-Host "Office installato." -ForegroundColor Green
-
-    # ---- Attivazione Office & Windows ----
-    powershell -Command "irm https://get.activated.win | iex"
+    # ---- OFFICE ----
+    if ($officeItem) {
+        Write-Host "Download $($officeItem.Label)..." -ForegroundColor Cyan
+        $office     = $officeItem.Office
+        $officeUrl  = "https://c2rsetup.officeapps.live.com/c2r/download.aspx?ProductreleaseID=$($office.ProductId)&platform=$($office.Platform)&language=$($office.Language)&version=O16GA"
+        $officeDest = Join-Path ([Environment]::GetFolderPath("Desktop")) "SetupOffice.exe"
+        Invoke-WebRequest -Uri $officeUrl -OutFile $officeDest
+        Write-Host "Avvio installazione Office..." -ForegroundColor Cyan
+        Start-Process -FilePath $officeDest -Wait
+        Remove-Item -Path $officeDest -Force
+        Write-Host "Office installato." -ForegroundColor Green
+    }
 
 } # fine blocco primo avvio
 
