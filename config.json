@@ -12,7 +12,13 @@
     { "id": "adobereader",         "name": "Adobe Acrobat Reader",     "selected": true },
     { "id": "javaruntime",         "name": "Java Runtime Environment", "selected": true },
     { "id": "notepadplusplus",     "name": "Notepad++",                "selected": true },
-    { "id": "rustdesk.install",    "name": "RustDesk",                 "selected": true }
+    { "id": "rustdesk.install",    "name": "RustDesk",                 "selected": true },
+    { "id": "winbox",              "name": "MikroTik WinBox",          "selected": false },
+    { "id": "putty",               "name": "PuTTY",                    "selected": false },
+    { "id": "winscp",              "name": "WinSCP",                   "selected": false },
+    { "id": "anydesk.install",     "name": "AnyDesk",                  "selected": false },
+    { "id": "powertoys",           "name": "Microsoft PowerToys",      "selected": false },
+    { "id": "advanced-ip-scanner", "name": "Advanced IP Scanner",      "selected": false }
   ],
   "office": {
     "name": "Microsoft Office 2024 ProPlus",

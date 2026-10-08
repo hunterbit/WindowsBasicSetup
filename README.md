@@ -31,6 +31,7 @@ Programs:
   - 7-Zip, Everything, TeraCopy
   - Adobe Reader, HWiNFO, Java Runtime
   - Notepad++, RustDesk
+  - Optional, not ticked by default: MikroTik WinBox, PuTTY, WinSCP, AnyDesk, PowerToys, Advanced IP Scanner
 - 📦 **Office 2024** — optional; downloads and runs the official Microsoft installer (Italian, x64 by default). A valid license is required to activate it
 
 ---
