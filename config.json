@@ -20,5 +20,14 @@
     "productId": "ProPlus2024Retail",
     "language": "it-it",
     "platform": "x64"
-  }
+  },
+  "tweaks": [
+    { "id": "wallpaper",          "name": "Sfondo e schermata di blocco",                            "selected": true,
+      "url": "https://r4.wallpaperflare.com/wallpaper/58/631/685/windows-11-microsoft-hd-wallpaper-323833af44ece00a7ca43c56beaf0f2b.jpg" },
+    { "id": "classicContextMenu", "name": "Menu contestuale classico (Windows 11)",                  "selected": true },
+    { "id": "darkTheme",          "name": "Tema scuro",                                              "selected": true },
+    { "id": "powerPlan",          "name": "Power plan: niente standby/spegnimento schermo, boot 3 s", "selected": true },
+    { "id": "disableUac",         "name": "Disattiva UAC (sconsigliato)",                            "selected": false },
+    { "id": "windowsUpdate",      "name": "Windows Update fino a sistema aggiornato (con riavvii)",  "selected": true }
+  ]
 }

@@ -7,16 +7,26 @@ An automation script (`setup.cmd` + `setup.ps1` + `config.json`) for quick Windo
 
 ## Features
 
+- ☑️ **Selection menus** — at startup the script lists the programs and the optimizations from `config.json` in the terminal and lets you tick which ones to apply
+
+Optimizations selectable from the menu (`setup.ps1`):
+
 - 🎨 **Wallpaper & Lock Screen** — sets a custom image for both desktop and lock screen, disabling Windows Spotlight
 - 🌑 **Dark Theme** — enables dark mode for apps and system UI
 - 🖱️ **Classic Context Menu** — restores the full right-click menu on Windows 11
-- 📂 **File Extensions** — makes file extensions visible in Explorer
-- 🔒 **UAC Disabled** — removes User Account Control prompts
 - ⚡ **Power Plan** — disables standby, monitor timeout and disk timeout; sets boot timeout to 3 seconds
+- 🔒 **Disable UAC** — removes User Account Control prompts. **Not ticked by default**: it lowers the system's security
+- 🔄 **Windows Update Loop** — installs all available updates, reboots if needed, and resumes automatically via Scheduled Task until no updates remain
+
+Always applied by the launcher (`setup.cmd`), before the menus:
+
+- 📂 **File Extensions** — makes file extensions visible in Explorer
 - 🔍 **Search** — disables Cortana and Bing integration in Windows Search
 - 🛡️ **Security Health** — restores the Security Health icon in the system tray
 - 📋 **Context Menu** — adds CopyTo and MoveTo entries to the right-click menu
-- ☑️ **App selection menu** — at startup the script lists the programs from `config.json` in the terminal and lets you tick which ones to install
+
+Programs:
+
 - 🍫 **Chocolatey** — installed automatically (only if at least one package is selected) and used to deploy the selected programs. Default catalog:
   - Google Chrome, Firefox
   - VLC, K-Lite Codec Pack Mega
@@ -24,7 +34,6 @@ An automation script (`setup.cmd` + `setup.ps1` + `config.json`) for quick Windo
   - Adobe Reader, HWiNFO, Java Runtime
   - Notepad++, RustDesk
 - 📦 **Office 2024** — optional; downloads and runs the official Microsoft installer (Italian, x64 by default). A valid license is required to activate it
-- 🔄 **Windows Update Loop** — installs all available updates, reboots if needed, and resumes automatically via Scheduled Task until no updates remain
 
 ---
 
@@ -41,26 +50,26 @@ An automation script (`setup.cmd` + `setup.ps1` + `config.json`) for quick Windo
 1. Download `setup.cmd`, `setup.ps1` and `config.json` and place them in the **same folder**
 2. Double-click `setup.cmd`
 3. Accept the UAC prompt
-4. Pick the programs to install in the menu and press Enter
+4. Pick the programs to install and press Enter, then pick the optimizations to apply and press Enter
 5. Wait — the script will handle the rest, including reboots
 
-> After each reboot, Windows Update will resume automatically. No need to re-run anything manually.
+> If Windows Update is selected, it resumes automatically after each reboot. No need to re-run anything manually.
 
-### Choosing the programs
+### Using the menus
 
 | Key | Action |
 |-----|--------|
 | Up / Down | Move |
-| Space | Tick / untick the highlighted program |
+| Space | Tick / untick the highlighted entry |
 | `A` / `N` | Select all / none |
-| Enter | Confirm and start |
-| Esc | Install no programs (tweaks and Windows Update still run) |
+| Enter | Confirm |
+| Esc | Select nothing in this menu |
 
-If the console window is too small for the list, the script falls back to a numbered prompt: type the numbers to toggle, Enter to confirm, `0` to install nothing.
+If the console window is too small for the list, the script falls back to a numbered prompt: type the numbers to toggle, Enter to confirm, `0` to select nothing.
 
 ### config.json
 
-`config.json` is the program catalog shown in the menu:
+`config.json` is the catalog shown in the menus:
 
 ```json
 {
@@ -74,13 +83,18 @@ If the console window is too small for the list, the script falls back to a numb
     "productId": "ProPlus2024Retail",
     "language": "it-it",
     "platform": "x64"
-  }
+  },
+  "tweaks": [
+    { "id": "wallpaper", "selected": true, "url": "https://example.com/my-wallpaper.jpg" },
+    { "id": "disableUac", "selected": false }
+  ]
 }
 ```
 
 - `apps[].id` — Chocolatey package name (required); `name` — label shown in the menu; `selected` — pre-ticked or not (default `true`)
 - `office` — remove the whole block to drop Office from the menu
-- `interactive` — set to `false` to skip the menu and install everything with `"selected": true`. Same effect as running `setup.ps1 -Unattended`
+- `tweaks[].id` — one of `wallpaper`, `classicContextMenu`, `darkTheme`, `powerPlan`, `disableUac`, `windowsUpdate`; `name` and `selected` work as for `apps`. `wallpaper` also accepts `url` (image used for desktop and lock screen). An optimization missing from the list is not shown and not applied
+- `interactive` — set to `false` to skip the menus and apply everything with `"selected": true`. Same effect as running `setup.ps1 -Unattended`
 
 ---
 
@@ -89,8 +103,8 @@ If the console window is too small for the list, the script falls back to a numb
 | File | Role |
 |------|------|
 | `setup.cmd` | Launcher — applies registry tweaks, then calls `setup.ps1` |
-| `setup.ps1` | Main script — program selection, wallpaper, software, Office, Windows Update loop |
-| `config.json` | Program catalog and default selection |
+| `setup.ps1` | Main script — selection menus, optimizations, software, Office, Windows Update loop |
+| `config.json` | Catalog of programs and optimizations with their default selection |
 | `Stop-WindowsUpdateLoop.ps1` | Stops the update/reboot loop and cleans up the Scheduled Task |
 
 ---
