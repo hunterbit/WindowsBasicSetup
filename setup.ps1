@@ -31,6 +31,9 @@ if ([Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) { exit }
 # Diventa $true se una modifica richiede il riavvio: viene solo segnalato, mai eseguito
 $rebootNeeded = $false
 
+# Windows PowerShell 5.1 non sempre usa TLS 1.2 per i download (sfondo, Office, programmi dal sito del produttore)
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+
 # ============================================================
 #  SELEZIONE PROGRAMMI E OTTIMIZZAZIONI - catalogo in config.json, scelta a terminale
 # ============================================================
@@ -81,7 +84,18 @@ function Get-SetupCatalog {
             if ($app.name) { $name = $app.name }
             $selected = $true
             if ($null -ne $app.selected) { $selected = [bool]$app.selected }
-            $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Options = $null }
+            if ($app.url) {
+                # Programma non presente su Chocolatey: scaricato dal sito del produttore sul Desktop pubblico
+                $url = [string]$app.url
+                if ($url -notmatch '^https://') { throw "config.json: l'url di '$($app.id)' deve iniziare con https://" }
+                $fileName = [System.IO.Path]::GetFileName(([uri]$url).AbsolutePath)
+                if ($app.fileName) { $fileName = [string]$app.fileName }
+                if (-not $fileName) { throw "config.json: per '$($app.id)' indica 'fileName' (nome del file da salvare)." }
+                $options = [pscustomobject]@{ Url = $url; FileName = $fileName }
+                $items += [pscustomobject]@{ Kind = "download"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Options = $options }
+            } else {
+                $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Options = $null }
+            }
         }
     }
 
@@ -697,6 +711,18 @@ if ($chocoApps.Count -gt 0) {
     }
 } else {
     Write-Host "Nessun pacchetto Chocolatey selezionato: Chocolatey non viene installato." -ForegroundColor Yellow
+}
+
+# ---- PROGRAMMI SCARICATI DAL SITO DEL PRODUTTORE ----
+foreach ($app in @($setupItems | Where-Object { $_.Kind -eq "download" -and $_.Selected })) {
+    $dest = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) $app.Options.FileName
+    Write-Host "Download $($app.Label)..." -ForegroundColor Cyan
+    try {
+        Invoke-WebRequest -Uri $app.Options.Url -OutFile $dest -UseBasicParsing -ErrorAction Stop
+        Write-Host "$($app.Label) salvato sul Desktop pubblico: $dest" -ForegroundColor Green
+    } catch {
+        Write-Host "Download di $($app.Label) non riuscito: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
 }
 
 # ---- OFFICE ----

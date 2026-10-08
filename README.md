@@ -44,7 +44,7 @@ Available but not ticked by default:
 
 - 🍫 **Chocolatey** — installed only if at least one package is selected, then used to deploy the selected programs. Failed packages are listed at the end
   - Ticked by default: Google Chrome, Firefox, VLC, K-Lite Codec Pack Mega, HWiNFO, 7-Zip, Everything, TeraCopy, Adobe Reader, Notepad++, RustDesk
-  - Available: Java 8 JRE (Eclipse Temurin), Java 8 JRE (Oracle — Oracle's license applies to commercial use), LibreOffice, Thunderbird, SumatraPDF, Greenshot, KeePassXC, AnyDesk, MikroTik WinBox, PuTTY, WinSCP, Advanced IP Scanner, Wireshark, Sysinternals Suite, PowerShell 7, CrystalDiskInfo, TreeSize Free, PowerToys, VS Code, Git
+  - Available: Java 8 JRE (Eclipse Temurin), Java 8 JRE (Oracle — Oracle's license applies to commercial use), LibreOffice, Thunderbird, SumatraPDF, Greenshot, KeePassXC, AnyDesk, Supremo (official portable executable, saved on the Public Desktop), MikroTik WinBox, PuTTY, WinSCP, Advanced IP Scanner, Wireshark, Sysinternals Suite, PowerShell 7, CrystalDiskInfo, TreeSize Free, PowerToys, VS Code, Git
 - 📦 **Office 2024** — downloads and runs the official Microsoft installer (Italian, x64 by default). A valid license is required to activate it
 
 ---
@@ -106,6 +106,7 @@ Lists longer than the window scroll. If the window is very small (under 9 lines)
 ```
 
 - `apps[].id` — Chocolatey package name (required; search it on https://community.chocolatey.org/packages); `name` — label shown in the menu; `selected` — pre-ticked or not (default `true`)
+- Programs that are not on Chocolatey: add `url` (official `https://` download link) to the entry. The file is saved on the Public Desktop, named after the URL or after `fileName` if given; `id` is then just a unique name. Example: `{ "id": "supremo", "name": "Supremo", "selected": false, "url": "https://www.nanosystems.it/public/download/Supremo.exe" }`
 - `office` — remove the whole block to drop Office from the menu
 - `tweaks[].id` — one of `restorePoint`, `removeBloatware`, `disableTelemetry`, `disableSuggestions`, `disableCopilot`, `copyMoveTo`, `showFileExtensions`, `classicContextMenu`, `disableWebSearch`, `securityHealthTray`, `taskbarWin11`, `darkTheme`, `wallpaper`, `powerPlan`, `disableFastStartup`, `disableHibernation`, `enableRdp`, `renameComputer`, `registeredOwner`, `enableNetFx3`, `disableUac`, `windowsUpdate`. An optimization missing from the list is not shown and not applied
 - Extra fields: `removeBloatware` → `packages` (Store package names, `*` wildcards allowed); `renameComputer` → `computerName` (empty = ask in the terminal); `wallpaper` → `url`; `registeredOwner` → `owner`, `organization`

@@ -20,6 +20,8 @@
     { "id": "greenshot",           "name": "Greenshot (screenshot)",            "selected": false },
     { "id": "keepassxc",           "name": "KeePassXC",                         "selected": false },
     { "id": "anydesk.install",     "name": "AnyDesk",                           "selected": false },
+    { "id": "supremo",             "name": "Supremo (portable, sul Desktop pubblico)", "selected": false,
+      "url": "https://www.nanosystems.it/public/download/Supremo.exe" },
     { "id": "winbox",              "name": "MikroTik WinBox",                   "selected": false },
     { "id": "putty",               "name": "PuTTY",                             "selected": false },
     { "id": "winscp",              "name": "WinSCP",                            "selected": false },
