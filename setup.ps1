@@ -173,15 +173,23 @@ function Get-NewComputerName {
 }
 
 # Scrive un valore di registro creando la chiave se manca
+# Se Windows nega la scrittura (alcune chiavi sono protette anche per l'amministratore)
+# mostra un avviso, con il suggerimento $Hint se presente, e lo script prosegue.
 function Set-RegValue {
     param(
         [string]$Path,
         [string]$Name,
         $Value,
-        [string]$Type = "DWord"
+        [string]$Type = "DWord",
+        [string]$Hint = ""
     )
-    if (-not (Test-Path -LiteralPath $Path)) { New-Item -Path $Path -Force | Out-Null }
-    New-ItemProperty -LiteralPath $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) { New-Item -Path $Path -Force -ErrorAction Stop | Out-Null }
+        New-ItemProperty -LiteralPath $Path -Name $Name -Value $Value -PropertyType $Type -Force -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Host "  Impostazione non applicata ($Path\$Name): $($_.Exception.Message)" -ForegroundColor Yellow
+        if ($Hint) { Write-Host "  $Hint" -ForegroundColor Yellow }
+    }
 }
 
 # Rimuove un'app Store per tutti gli utenti e dall'immagine (non torna con i nuovi utenti).
@@ -620,7 +628,9 @@ if ($tweakIds -contains "taskbarWin11") {
     Set-RegValue -Path $adv -Name TaskbarAl -Value 0            # allineata a sinistra
     Set-RegValue -Path $adv -Name ShowTaskViewButton -Value 0   # niente Visualizzazione attivita'
     Set-RegValue -Path $adv -Name TaskbarMn -Value 0            # niente Chat
-    Set-RegValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name AllowNewsAndInterests -Value 0   # niente Widget
+    # Niente Widget: sulle build recenti di Windows 11 questa chiave e' protetta e la scrittura viene negata
+    Set-RegValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name AllowNewsAndInterests -Value 0 `
+        -Hint "Windows protegge l'impostazione dei Widget su questa build: disattivali da Impostazioni > Personalizzazione > Barra delle applicazioni."
     $restartExplorer = $true
     Write-Host "Barra applicazioni configurata." -ForegroundColor Green
 }
