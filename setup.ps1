@@ -139,6 +139,11 @@ function Get-SetupCatalog {
     $interactive = $true
     if ($null -ne $config.interactive) { $interactive = [bool]$config.interactive }
 
+    # Nei menu le voci spuntate di default vengono prima, poi le altre; ogni gruppo mantiene
+    # l'ordine di config.json (Where-Object conserva l'ordine, Sort-Object in PS 5.1 no)
+    $items  = @($items  | Where-Object { $_.Selected }) + @($items  | Where-Object { -not $_.Selected })
+    $tweaks = @($tweaks | Where-Object { $_.Selected }) + @($tweaks | Where-Object { -not $_.Selected })
+
     return [pscustomobject]@{ Interactive = $interactive; Items = $items; Tweaks = $tweaks }
 }
 
