@@ -76,6 +76,7 @@ function Get-SetupCatalog {
         throw "File di configurazione non valido ($Path): $($_.Exception.Message)"
     }
 
+    $order = 0
     $items = @()
     if ($config.apps) {
         foreach ($app in @($config.apps)) {
@@ -92,9 +93,9 @@ function Get-SetupCatalog {
                 if ($app.fileName) { $fileName = [string]$app.fileName }
                 if (-not $fileName) { throw "config.json: per '$($app.id)' indica 'fileName' (nome del file da salvare)." }
                 $options = [pscustomobject]@{ Url = $url; FileName = $fileName }
-                $items += [pscustomobject]@{ Kind = "download"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Options = $options }
+                $items += [pscustomobject]@{ Kind = "download"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Active = $null; Order = $order++; Options = $options }
             } else {
-                $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Options = $null }
+                $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Active = $null; Order = $order++; Options = $null }
             }
         }
     }
@@ -109,7 +110,7 @@ function Get-SetupCatalog {
         $selected = $true
         if ($null -ne $config.office.selected) { $selected = [bool]$config.office.selected }
         $label = "{0} ({1}, {2})" -f $name, $office.Language, $office.Platform
-        $items += [pscustomobject]@{ Kind = "office"; Id = $office.ProductId; Label = $label; Selected = $selected; Options = $office }
+        $items += [pscustomobject]@{ Kind = "office"; Id = $office.ProductId; Label = $label; Selected = $selected; Active = $null; Order = $order++; Options = $office }
     }
 
     $tweaks = @()
@@ -146,17 +147,16 @@ function Get-SetupCatalog {
                 if ($tweak.computerName) { $newName = ([string]$tweak.computerName).Trim() }
                 $options = [pscustomobject]@{ ComputerName = $newName }
             }
-            $tweaks += [pscustomobject]@{ Kind = "tweak"; Id = $id; Label = [string]$name; Selected = $selected; Options = $options }
+            $tweaks += [pscustomobject]@{ Kind = "tweak"; Id = $id; Label = [string]$name; Selected = $selected; Active = $null; Order = $order++; Options = $options }
         }
     }
 
     $interactive = $true
     if ($null -ne $config.interactive) { $interactive = [bool]$config.interactive }
 
-    # Nei menu le voci spuntate di default vengono prima, poi le altre; ogni gruppo mantiene
-    # l'ordine di config.json (Where-Object conserva l'ordine, Sort-Object in PS 5.1 no)
-    $items  = @($items  | Where-Object { $_.Selected }) + @($items  | Where-Object { -not $_.Selected })
-    $tweaks = @($tweaks | Where-Object { $_.Selected }) + @($tweaks | Where-Object { -not $_.Selected })
+    # Nei menu le voci spuntate vengono prima, poi le altre; ogni gruppo nell'ordine di config.json
+    $items  = Select-SelectedFirst -Items $items
+    $tweaks = Select-SelectedFirst -Items $tweaks
 
     return [pscustomobject]@{ Interactive = $interactive; Items = $items; Tweaks = $tweaks }
 }
@@ -232,6 +232,235 @@ function Remove-AppxByName {
     return $removed
 }
 
+# ============================================================
+#  STATO DELLE OTTIMIZZAZIONI: rilevamento e ripristino ai valori di Windows
+# ============================================================
+
+# Legge un valore di registro; $null se la chiave o il valore non esistono
+function Get-RegValue {
+    param([string]$Path, [string]$Name)
+    try {
+        return (Get-ItemProperty -LiteralPath $Path -Name $Name -ErrorAction Stop).$Name
+    } catch {
+        return $null
+    }
+}
+
+# Cancella un valore di registro (nessun errore se non esiste)
+function Remove-RegValue {
+    param([string]$Path, [string]$Name)
+    Remove-ItemProperty -LiteralPath $Path -Name $Name -ErrorAction SilentlyContinue
+}
+
+# Imposta l'immagine del desktop
+function Set-DesktopWallpaper {
+    param([string]$ImagePath)
+    if (-not ("Wallpaper" -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Wallpaper {
+    [DllImport("user32.dll")]
+    public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+}
+"@
+    }
+    [Wallpaper]::SystemParametersInfo(20, 0, $ImagePath, 3) | Out-Null
+}
+
+$RegAdvanced = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+$RegCdm      = "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+$RegUac      = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+$LockScreenFile = "C:\Windows\Web\Screen\lockscreen.jpg"
+
+# Per ogni ottimizzazione reversibile: Test = e' gia' attiva sul sistema? Revert = torna al valore di Windows.
+# Le voci che sono azioni (punto di ripristino, rimozione app, rinomina, Windows Update, icona Sicurezza,
+# proprietario registrato) non hanno uno stato da rilevare ne' da annullare e non compaiono qui.
+$TweakState = @{
+    copyMoveTo = @{
+        Test   = { Test-Path -LiteralPath "Registry::HKEY_CLASSES_ROOT\AllFilesystemObjects\shellex\ContextMenuHandlers\CopyTo" }
+        Revert = {
+            foreach ($k in @("CopyTo", "MoveTo")) {
+                Remove-Item -LiteralPath "Registry::HKEY_CLASSES_ROOT\AllFilesystemObjects\shellex\ContextMenuHandlers\$k" -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    showFileExtensions = @{
+        Test   = { (Get-RegValue $RegAdvanced "HideFileExt") -eq 0 }
+        Revert = { Set-RegValue -Path $RegAdvanced -Name HideFileExt -Value 1; $script:restartExplorer = $true }
+    }
+    classicContextMenu = @{
+        Test   = { Test-Path -LiteralPath "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" }
+        Revert = {
+            Remove-Item -LiteralPath "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" -Recurse -Force -ErrorAction SilentlyContinue
+            $script:restartExplorer = $true
+        }
+    }
+    disableWebSearch = @{
+        Test   = { (Get-RegValue "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" "BingSearchEnabled") -eq 0 }
+        Revert = {
+            Remove-RegValue "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" "BingSearchEnabled"
+            Remove-RegValue "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" "CortanaConsent"
+        }
+    }
+    darkTheme = @{
+        Test   = {
+            $p = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            ((Get-RegValue $p "AppsUseLightTheme") -eq 0) -and ((Get-RegValue $p "SystemUsesLightTheme") -eq 0)
+        }
+        Revert = {
+            $p = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            Set-RegValue -Path $p -Name AppsUseLightTheme -Value 1
+            Set-RegValue -Path $p -Name SystemUsesLightTheme -Value 1
+        }
+    }
+    wallpaper = @{
+        # Riconosciuto dalla schermata di blocco impostata da questo script
+        Test   = { (Get-RegValue "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" "LockScreenImagePath") -eq $LockScreenFile }
+        Revert = {
+            $csp = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP"
+            foreach ($n in @("LockScreenImagePath", "LockScreenImageUrl", "LockScreenImageStatus")) { Remove-RegValue $csp $n }
+            foreach ($n in @("RotatingLockScreenEnabled", "RotatingLockScreenOverlayEnabled", "SubscribedContent-338387Enabled")) {
+                Set-RegValue -Path $RegCdm -Name $n -Value 1
+            }
+            $default = "$env:windir\Web\Wallpaper\Windows\img0.jpg"
+            if (Test-Path -LiteralPath $default) { Set-DesktopWallpaper $default }
+        }
+    }
+    powerPlan = @{
+        # Timeout con alimentazione da rete (standby e schermo) del piano attivo
+        Test   = {
+            $schemes = "HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes"
+            $active  = Get-RegValue $schemes "ActivePowerScheme"
+            if (-not $active) { return $false }
+            $standby = Get-RegValue "$schemes\$active\238c9fa8-0aad-41ed-83f4-97be242c8f20\29f6c1db-86da-48c5-9fdb-f2b67b1f44da" "ACSettingIndex"
+            $monitor = Get-RegValue "$schemes\$active\7516b95f-f776-4464-8c53-06167f40cc99\3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e" "ACSettingIndex"
+            ($standby -eq 0) -and ($monitor -eq 0)
+        }
+        # Riporta tutte le combinazioni di risparmio energia ai valori di fabbrica
+        Revert = { powercfg -restoredefaultschemes; bcdedit /timeout 30 | Out-Null }
+    }
+    disableFastStartup = @{
+        Test   = { (Get-RegValue "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled") -eq 0 }
+        Revert = { Set-RegValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name HiberbootEnabled -Value 1 }
+    }
+    disableHibernation = @{
+        Test   = { (Get-RegValue "HKLM:\SYSTEM\CurrentControlSet\Control\Power" "HibernateEnabled") -eq 0 }
+        Revert = { powercfg /hibernate on }
+    }
+    enableRdp = @{
+        Test   = { (Get-RegValue "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" "fDenyTSConnections") -eq 0 }
+        Revert = {
+            Set-RegValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections -Value 1
+            Disable-NetFirewallRule -Group "@FirewallAPI.dll,-28752" -ErrorAction SilentlyContinue
+        }
+    }
+    disableUac = @{
+        Test   = { (Get-RegValue $RegUac "EnableLUA") -eq 0 }
+        Revert = {
+            # Valori predefiniti di Windows
+            $defaults = [ordered]@{ EnableLUA = 1; ConsentPromptBehaviorAdmin = 5; ConsentPromptBehaviorUser = 3; PromptOnSecureDesktop = 1
+                                    EnableInstallerDetection = 1; EnableVirtualization = 1; ValidateAdminCodeSignatures = 0; FilterAdministratorToken = 0 }
+            foreach ($n in $defaults.Keys) { Set-RegValue -Path $RegUac -Name $n -Value $defaults[$n] }
+            $script:rebootNeeded = $true
+        }
+    }
+    disableTelemetry = @{
+        Test   = { (Get-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry") -eq 0 }
+        Revert = {
+            Remove-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry"
+            Set-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name Enabled -Value 1
+            Set-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" -Name TailoredExperiencesWithDiagnosticDataEnabled -Value 1
+        }
+    }
+    disableSuggestions = @{
+        Test   = { ((Get-RegValue $RegCdm "SilentInstalledAppsEnabled") -eq 0) -and ((Get-RegValue $RegCdm "SystemPaneSuggestionsEnabled") -eq 0) }
+        Revert = {
+            foreach ($n in @("SilentInstalledAppsEnabled", "SystemPaneSuggestionsEnabled", "SoftLandingEnabled",
+                             "SubscribedContent-338388Enabled", "SubscribedContent-338389Enabled",
+                             "SubscribedContent-353694Enabled", "SubscribedContent-353696Enabled")) {
+                Set-RegValue -Path $RegCdm -Name $n -Value 1
+            }
+            Remove-RegValue $RegAdvanced "Start_IrisRecommendations"
+            Remove-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" "DisableWindowsConsumerFeatures"
+        }
+    }
+    disableCopilot = @{
+        Test   = { (Get-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot") -eq 1 }
+        Revert = {
+            Remove-RegValue "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot"
+            Remove-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot"
+            Remove-RegValue $RegAdvanced "ShowCopilotButton"
+            Remove-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" "DisableAIDataAnalysis"
+            Remove-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" "AllowRecallEnablement"
+            $script:restartExplorer = $true
+        }
+    }
+    taskbarWin11 = @{
+        Test   = { (Get-RegValue $RegAdvanced "TaskbarAl") -eq 0 }
+        Revert = {
+            foreach ($n in @("TaskbarAl", "ShowTaskViewButton", "TaskbarMn")) { Remove-RegValue $RegAdvanced $n }
+            Remove-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" "AllowNewsAndInterests"
+            $script:restartExplorer = $true
+        }
+    }
+    enableNetFx3 = @{
+        Test   = { (Get-WindowsOptionalFeature -Online -FeatureName NetFx3 -ErrorAction Stop).State -eq "Enabled" }
+        Revert = {
+            $r = Disable-WindowsOptionalFeature -Online -FeatureName NetFx3 -NoRestart -ErrorAction Stop
+            if ($r.RestartNeeded) { $script:rebootNeeded = $true }
+        }
+    }
+}
+
+# Rileva lo stato reale di ogni ottimizzazione reversibile e decide la spunta iniziale:
+#  - gia' attiva sul sistema           -> spuntata (e segnalata nel menu)
+#  - non attiva, PC gia' configurato   -> non spuntata (conta lo stato reale)
+#  - non attiva, primo avvio sul PC    -> default di config.json
+# Le azioni (senza Test) restano sempre al default di config.json.
+function Update-TweakState {
+    param([object[]]$Tweaks, [hashtable]$StateTable, [bool]$AlreadyConfigured)
+
+    foreach ($tw in $Tweaks) {
+        if (-not $StateTable.ContainsKey($tw.Id)) { continue }
+        $active = $null
+        try { $active = [bool](& $StateTable[$tw.Id].Test) } catch { $active = $null }
+        $tw.Active = $active
+        if ($active -eq $true) {
+            $tw.Selected = $true
+        } elseif ($AlreadyConfigured -and $active -eq $false) {
+            $tw.Selected = $false
+        }
+    }
+}
+
+# Dopo i menu: cosa applicare, cosa lasciare com'e' e cosa riportare ai valori di Windows.
+# Senza menu (-Unattended / interactive false) non si ripristina mai nulla.
+function Get-TweakPlan {
+    param([object[]]$Tweaks, [bool]$MenuShown)
+
+    $apply  = @($Tweaks | Where-Object { $_.Selected -and $_.Active -ne $true })
+    $keep   = @($Tweaks | Where-Object { $_.Selected -and $_.Active -eq $true })
+    $revert = @()
+    if ($MenuShown) { $revert = @($Tweaks | Where-Object { -not $_.Selected -and $_.Active -eq $true }) }
+    return [pscustomobject]@{ Apply = $apply; Keep = $keep; Revert = $revert }
+}
+
+# Riordina: voci spuntate prima, poi le altre; dentro ogni gruppo vale la posizione in config.json (Order)
+function Select-SelectedFirst {
+    param([object[]]$Items)
+    $on  = @($Items | Where-Object { $_.Selected }       | Sort-Object -Property Order)
+    $off = @($Items | Where-Object { -not $_.Selected }  | Sort-Object -Property Order)
+    return @($on + $off)
+}
+
+# Etichetta mostrata nei menu: le ottimizzazioni gia' presenti sul sistema sono segnalate
+function Get-MenuLabel {
+    param($Item)
+    if ($Item.Active -eq $true) { return "$($Item.Label)  (gia' attiva)" }
+    return $Item.Label
+}
+
 # Scrive una riga occupando tutta la larghezza, cosi' il ridisegno del menu non lascia residui
 function Write-MenuLine {
     param([string]$Text, [int]$Width, [ConsoleColor]$Color = [ConsoleColor]::Gray)
@@ -275,8 +504,9 @@ function Show-AppMenu {
                 if ($Items[$i].Selected) { $mark = "x" }
                 $pointer = " "
                 $color   = [ConsoleColor]::Gray
+                if ($Items[$i].Active -eq $true) { $color = [ConsoleColor]::Green }
                 if ($i -eq $pos) { $pointer = ">"; $color = [ConsoleColor]::Yellow }
-                Write-MenuLine (" {0} [{1}] {2}" -f $pointer, $mark, $Items[$i].Label) $width $color
+                Write-MenuLine (" {0} [{1}] {2}" -f $pointer, $mark, (Get-MenuLabel $Items[$i])) $width $color
             }
             Write-MenuLine "" $width
             Write-MenuLine " Su/Giu: sposta   Spazio: seleziona   A: tutti   N: nessuno" $width DarkGray
@@ -317,7 +547,9 @@ function Read-AppSelection {
         for ($i = 0; $i -lt $Items.Count; $i++) {
             $mark = " "
             if ($Items[$i].Selected) { $mark = "x" }
-            Write-Host ("  {0,2}) [{1}] {2}" -f ($i + 1), $mark, $Items[$i].Label)
+            $color = [ConsoleColor]::Gray
+            if ($Items[$i].Active -eq $true) { $color = [ConsoleColor]::Green }
+            Write-Host ("  {0,2}) [{1}] {2}" -f ($i + 1), $mark, (Get-MenuLabel $Items[$i])) -ForegroundColor $color
         }
         try {
             $answer = Read-Host " Numeri da invertire (es. 1,3 5) - INVIO conferma - 0 $NoneLabel"
@@ -389,7 +621,17 @@ try {
 }
 $setupItems  = @($catalog.Items)
 $setupTweaks = @($catalog.Tweaks)
-if ($catalog.Interactive -and -not $Unattended) {
+
+# Stato reale delle ottimizzazioni: quelle gia' attive vengono spuntate e segnalate nel menu.
+# Il segno in HKLM:\SOFTWARE\WindowsBasicSetup indica che lo script e' gia' stato eseguito su questo PC.
+$SetupMarkerKey    = "HKLM:\SOFTWARE\WindowsBasicSetup"
+$alreadyConfigured = Test-Path -LiteralPath $SetupMarkerKey
+Write-Host "Verifica delle impostazioni gia' attive sul sistema..." -ForegroundColor Cyan
+Update-TweakState -Tweaks $setupTweaks -StateTable $TweakState -AlreadyConfigured $alreadyConfigured
+$setupTweaks = Select-SelectedFirst -Items $setupTweaks
+
+$menuShown = [bool]($catalog.Interactive -and -not $Unattended)
+if ($menuShown) {
     if ($setupItems.Count -gt 0) {
         Select-SetupItems -Items $setupItems
     }
@@ -399,13 +641,15 @@ if ($catalog.Interactive -and -not $Unattended) {
 }
 $chocoApps  = @($setupItems | Where-Object { $_.Kind -eq "choco"  -and $_.Selected })
 $officeItem = $setupItems | Where-Object { $_.Kind -eq "office" -and $_.Selected } | Select-Object -First 1
-$tweakIds   = @($setupTweaks | Where-Object { $_.Selected } | ForEach-Object { $_.Id })
+$tweakPlan  = Get-TweakPlan -Tweaks $setupTweaks -MenuShown $menuShown
+# Si applicano solo le voci spuntate non ancora attive; quelle gia' attive restano come sono
+$tweakIds   = @($tweakPlan.Apply | ForEach-Object { $_.Id })
 
 # Nome del PC chiesto subito, cosi' il resto del setup prosegue senza altre domande
 $newComputerName = ""
 if ($tweakIds -contains "renameComputer") {
     $renameOptions = ($setupTweaks | Where-Object { $_.Id -eq "renameComputer" } | Select-Object -First 1).Options
-    $newComputerName = Get-NewComputerName -Configured $renameOptions.ComputerName -Ask:($catalog.Interactive -and -not $Unattended)
+    $newComputerName = Get-NewComputerName -Configured $renameOptions.ComputerName -Ask:$menuShown
     if (-not $newComputerName) { Write-Host "Il PC non verra' rinominato." -ForegroundColor Yellow }
 }
 
@@ -416,12 +660,19 @@ if ($chosen.Count -gt 0) {
 } else {
     Write-Host "Nessun programma da installare." -ForegroundColor Yellow
 }
-$chosen = @($setupTweaks | Where-Object { $_.Selected })
-if ($chosen.Count -gt 0) {
+if ($tweakPlan.Apply.Count -gt 0) {
     Write-Host "Ottimizzazioni da applicare:" -ForegroundColor Cyan
-    foreach ($item in $chosen) { Write-Host "  - $($item.Label)" }
+    foreach ($item in $tweakPlan.Apply) { Write-Host "  - $($item.Label)" }
 } else {
-    Write-Host "Nessuna ottimizzazione da applicare." -ForegroundColor Yellow
+    Write-Host "Nessuna nuova ottimizzazione da applicare." -ForegroundColor Yellow
+}
+if ($tweakPlan.Keep.Count -gt 0) {
+    Write-Host "Gia' attive, lasciate come sono:" -ForegroundColor Green
+    foreach ($item in $tweakPlan.Keep) { Write-Host "  - $($item.Label)" }
+}
+if ($tweakPlan.Revert.Count -gt 0) {
+    Write-Host "Da riportare ai valori predefiniti di Windows:" -ForegroundColor Yellow
+    foreach ($item in $tweakPlan.Revert) { Write-Host "  - $($item.Label)" }
 }
 Write-Host ""
 
@@ -447,6 +698,17 @@ if ($tweakIds -contains "restorePoint") {
         } else {
             Set-RegValue -Path $srKey -Name SystemRestorePointCreationFrequency -Value $srOldFreq
         }
+    }
+}
+
+# ---- RIPRISTINO AI VALORI DI WINDOWS (voci attive a cui e' stata tolta la spunta) ----
+foreach ($tw in $tweakPlan.Revert) {
+    Write-Host "Ripristino ai valori di Windows: $($tw.Label)..." -ForegroundColor Cyan
+    try {
+        & $TweakState[$tw.Id].Revert
+        Write-Host "Ripristinato: $($tw.Label)." -ForegroundColor Green
+    } catch {
+        Write-Host "Ripristino non riuscito ($($tw.Label)): $($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
 
@@ -564,15 +826,7 @@ if ($tweakIds -contains "wallpaper") {
     $wpPath = Join-Path $env:APPDATA "wallpaper.jpg"
     Invoke-WebRequest -Uri $wpUrl -OutFile $wpPath -UseBasicParsing
 
-    Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class Wallpaper {
-[DllImport("user32.dll")]
-public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
-}
-"@
-    [Wallpaper]::SystemParametersInfo(20, 0, $wpPath, 3) | Out-Null
+    Set-DesktopWallpaper $wpPath
     Write-Host "Sfondo impostato." -ForegroundColor Green
 
     # ---- LOCKSCREEN ----
@@ -775,6 +1029,9 @@ if ($tweakIds -contains "windowsUpdate") {
         Write-Host "Windows Update non eseguito: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
+
+# Segno che il setup e' stato eseguito: ai prossimi avvii il menu riflette lo stato reale del PC
+Set-RegValue -Path $SetupMarkerKey -Name LastRun -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss") -Type String
 
 # ============================================================
 Write-Host ""

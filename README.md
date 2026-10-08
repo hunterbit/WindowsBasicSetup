@@ -9,6 +9,7 @@ An automation script (`setup.cmd` + `setup.ps1` + `config.json`) for quick Windo
 
 - ☑️ **Selection menus** — programs and optimizations come from `config.json` and are ticked in the terminal; nothing is changed before you confirm
 - 🔁 **No automatic reboots** — Windows Update runs once; a pending reboot is only reported
+- 🔎 **Detects what is already applied** — when the script starts it checks Windows for every optimization that can be detected. Those already active are ticked and shown in green with "(gia' attiva)"; untick one and the script puts it back to the Windows default
 
 ### Optimizations
 
@@ -78,6 +79,23 @@ Available but not ticked by default:
 | Esc | Select nothing in this menu |
 
 Lists longer than the window scroll. If the window is very small (under 9 lines) or input is redirected, the script falls back to a numbered prompt: type the numbers to toggle, Enter to confirm, `0` to select nothing.
+
+### Running it again
+
+On every start the script reads the real state of the PC:
+
+| On the PC | You leave it… | Result |
+|---|---|---|
+| already active | ticked | left as it is |
+| already active | **unticked** | **restored to the Windows default** |
+| not active | ticked | applied |
+| not active | unticked | nothing |
+
+- On the first run on a PC, optimizations that are not active start ticked or not as set in `config.json`. At the end the script writes `HKLM\SOFTWARE\WindowsBasicSetup`; from then on non-active optimizations start unticked, so the menu shows exactly how the PC is
+- Detected and restorable: Copy To/Move To, file extensions, classic context menu, Cortana/Bing, dark theme, wallpaper & lock screen, power plan, Fast Startup, hibernation, Remote Desktop, UAC, telemetry, suggestions, Copilot/Recall, Windows 11 taskbar, .NET 3.5. Restoring the power plan resets all power plans to factory settings; restoring Copilot does not reinstall the Copilot app
+- Actions that have no state (restore point, removing preinstalled apps, rename, Windows Update, Security Health icon, registered owner) always start as set in `config.json`; removed apps are not reinstalled
+- Programs: installed ones are not detected
+- With `-Unattended` or `"interactive": false` nothing is ever restored: the script only applies
 
 ### config.json
 
