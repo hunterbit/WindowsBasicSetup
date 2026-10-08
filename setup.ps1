@@ -46,6 +46,17 @@ $KnownTweaks = [ordered]@{
     disableSuggestions = "Disattiva app suggerite e pubblicita' in Start"
     disableFastStartup = "Disattiva Avvio rapido"
     disableCopilot     = "Disattiva Copilot e Recall"
+    disableOfficeTelemetry = "Disattiva telemetria di Microsoft Office"
+    disableTelemetryTasks  = "Disattiva attivita' pianificate di telemetria (CEIP, Compatibility Appraiser)"
+    disableLocation    = "Disattiva posizione e geolocalizzazione"
+    disableScoobe      = "Disattiva 'Completa la configurazione' e suggerimenti nelle notifiche"
+    edgeQuiet          = "Edge senza invadenze (prima esecuzione, avvio rapido, background)"
+    taskbarEndTask     = "'Termina attivita' nel tasto destro della barra (Windows 11)"
+    disableStickyKeys  = "Disattiva la scorciatoia Tasti permanenti (5 volte Maiusc)"
+    disableMouseAccel  = "Disattiva accelerazione del mouse"
+    ultimatePerformance = "Piano energetico Prestazioni eccellenti"
+    cleanupTemp        = "Pulizia file temporanei e cache di Windows Update (a fine setup)"
+    removeOneDrive     = "Rimuovi OneDrive (non reversibile)"
     taskbarWin11       = "Barra applicazioni Windows 11 a sinistra, senza widget"
     disableHibernation = "Disattiva ibernazione"
     enableRdp          = "Abilita Desktop remoto (solo Pro/Enterprise)"
@@ -272,10 +283,32 @@ $RegAdvanced = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advance
 $RegCdm      = "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
 $RegUac      = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 $LockScreenFile = "C:\Windows\Web\Screen\lockscreen.jpg"
+$SetupMarkerKey = "HKLM:\SOFTWARE\WindowsBasicSetup"
+$RegOffice      = "HKCU:\Software\Policies\Microsoft\office"
+$RegEdgePolicy  = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+
+# Attivita' pianificate che raccolgono e inviano dati di utilizzo (percorso, nome)
+$TelemetryTasks = @(
+    @("\Microsoft\Windows\Application Experience\", "Microsoft Compatibility Appraiser"),
+    @("\Microsoft\Windows\Application Experience\", "ProgramDataUpdater"),
+    @("\Microsoft\Windows\Customer Experience Improvement Program\", "Consolidator"),
+    @("\Microsoft\Windows\Customer Experience Improvement Program\", "UsbCeip"),
+    @("\Microsoft\Windows\Autochk\", "Proxy"),
+    @("\Microsoft\Windows\DiskDiagnostic\", "Microsoft-Windows-DiskDiagnosticDataCollector"),
+    @("\Microsoft\Windows\Feedback\Siuf\", "DmClient"),
+    @("\Microsoft\Windows\Feedback\Siuf\", "DmClientOnScenarioDownload")
+)
+
+# Le attivita' dell'elenco presenti su questo PC (variano tra versioni di Windows)
+function Get-TelemetryTasks {
+    foreach ($t in $TelemetryTasks) {
+        Get-ScheduledTask -TaskPath $t[0] -TaskName $t[1] -ErrorAction SilentlyContinue
+    }
+}
 
 # Per ogni ottimizzazione reversibile: Test = e' gia' attiva sul sistema? Revert = torna al valore di Windows.
-# Le voci che sono azioni (punto di ripristino, rimozione app, rinomina, Windows Update, icona Sicurezza,
-# proprietario registrato) non hanno uno stato da rilevare ne' da annullare e non compaiono qui.
+# Le voci che sono azioni (punto di ripristino, rimozione app e OneDrive, rinomina, Windows Update, pulizia,
+# icona Sicurezza, proprietario registrato) non hanno uno stato da rilevare ne' da annullare e non compaiono qui.
 $TweakState = @{
     copyMoveTo = @{
         Test   = { Test-Path -LiteralPath "Registry::HKEY_CLASSES_ROOT\AllFilesystemObjects\shellex\ContextMenuHandlers\CopyTo" }
@@ -402,6 +435,77 @@ $TweakState = @{
             foreach ($n in @("TaskbarAl", "ShowTaskViewButton", "TaskbarMn")) { Remove-RegValue $RegAdvanced $n }
             Remove-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" "AllowNewsAndInterests"
             $script:restartExplorer = $true
+        }
+    }
+    disableOfficeTelemetry = @{
+        Test   = { (Get-RegValue "$RegOffice\common\clienttelemetry" "sendtelemetry") -eq 3 }
+        Revert = {
+            Remove-RegValue "$RegOffice\common\clienttelemetry" "sendtelemetry"
+            Remove-RegValue "$RegOffice\16.0\common\clienttelemetry" "DisableTelemetry"
+            Remove-RegValue "$RegOffice\16.0\common\clienttelemetry" "SendTelemetry"
+            Remove-RegValue "$RegOffice\16.0\osm" "Enablelogging"
+            Remove-RegValue "$RegOffice\16.0\osm" "EnableUpload"
+        }
+    }
+    disableTelemetryTasks = @{
+        Test   = {
+            $tasks = @(Get-TelemetryTasks)
+            ($tasks.Count -gt 0) -and (@($tasks | Where-Object { $_.State -ne "Disabled" }).Count -eq 0)
+        }
+        Revert = { Get-TelemetryTasks | Enable-ScheduledTask -ErrorAction SilentlyContinue | Out-Null }
+    }
+    disableLocation = @{
+        Test   = { (Get-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" "DisableLocation") -eq 1 }
+        Revert = {
+            Remove-RegValue "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" "DisableLocation"
+            Set-RegValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" -Name Value -Value "Allow" -Type String
+        }
+    }
+    disableScoobe = @{
+        Test   = { (Get-RegValue "HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" "ScoobeSystemSettingEnabled") -eq 0 }
+        Revert = {
+            Set-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" -Name ScoobeSystemSettingEnabled -Value 1
+            Set-RegValue -Path $RegCdm -Name "SubscribedContent-310093Enabled" -Value 1
+            Remove-RegValue "HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.Suggested" "Enabled"
+        }
+    }
+    edgeQuiet = @{
+        Test   = { (Get-RegValue $RegEdgePolicy "HideFirstRunExperience") -eq 1 }
+        Revert = { foreach ($n in @("HideFirstRunExperience", "StartupBoostEnabled", "BackgroundModeEnabled")) { Remove-RegValue $RegEdgePolicy $n } }
+    }
+    taskbarEndTask = @{
+        Test   = { (Get-RegValue "$RegAdvanced\TaskbarDeveloperSettings" "TaskbarEndTask") -eq 1 }
+        Revert = { Remove-RegValue "$RegAdvanced\TaskbarDeveloperSettings" "TaskbarEndTask"; $script:restartExplorer = $true }
+    }
+    disableStickyKeys = @{
+        Test   = { (Get-RegValue "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags") -eq "506" }
+        Revert = {
+            # Valori predefiniti di Windows (scorciatoie attive)
+            Set-RegValue -Path "HKCU:\Control Panel\Accessibility\StickyKeys" -Name Flags -Value "510" -Type String
+            Set-RegValue -Path "HKCU:\Control Panel\Accessibility\ToggleKeys" -Name Flags -Value "62" -Type String
+            Set-RegValue -Path "HKCU:\Control Panel\Accessibility\Keyboard Response" -Name Flags -Value "126" -Type String
+        }
+    }
+    disableMouseAccel = @{
+        Test   = { (Get-RegValue "HKCU:\Control Panel\Mouse" "MouseSpeed") -eq "0" }
+        Revert = {
+            Set-RegValue -Path "HKCU:\Control Panel\Mouse" -Name MouseSpeed -Value "1" -Type String
+            Set-RegValue -Path "HKCU:\Control Panel\Mouse" -Name MouseThreshold1 -Value "6" -Type String
+            Set-RegValue -Path "HKCU:\Control Panel\Mouse" -Name MouseThreshold2 -Value "10" -Type String
+        }
+    }
+    ultimatePerformance = @{
+        # Il piano creato dallo script e' attivo?
+        Test   = {
+            $guid = Get-RegValue $SetupMarkerKey "UltimatePlanGuid"
+            $active = Get-RegValue "HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes" "ActivePowerScheme"
+            [bool]$guid -and ($guid -eq $active)
+        }
+        Revert = {
+            $guid = Get-RegValue $SetupMarkerKey "UltimatePlanGuid"
+            powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e   # Bilanciato
+            if ($guid) { powercfg /delete $guid }
+            Remove-RegValue $SetupMarkerKey "UltimatePlanGuid"
         }
     }
     enableNetFx3 = @{
@@ -624,7 +728,6 @@ $setupTweaks = @($catalog.Tweaks)
 
 # Stato reale delle ottimizzazioni: quelle gia' attive vengono spuntate e segnalate nel menu.
 # Il segno in HKLM:\SOFTWARE\WindowsBasicSetup indica che lo script e' gia' stato eseguito su questo PC.
-$SetupMarkerKey    = "HKLM:\SOFTWARE\WindowsBasicSetup"
 $alreadyConfigured = Test-Path -LiteralPath $SetupMarkerKey
 Write-Host "Verifica delle impostazioni gia' attive sul sistema..." -ForegroundColor Cyan
 Update-TweakState -Tweaks $setupTweaks -StateTable $TweakState -AlreadyConfigured $alreadyConfigured
@@ -737,6 +840,35 @@ if ($tweakIds -contains "removeBloatware") {
     }
 }
 
+if ($tweakIds -contains "removeOneDrive") {
+    # ---- RIMOZIONE ONEDRIVE (non reversibile) ----
+    Write-Host "Rimozione OneDrive..." -ForegroundColor Cyan
+    Stop-Process -Name OneDrive -Force -ErrorAction SilentlyContinue
+    # Il programma di disinstallazione e' indicato nel registro (installazione per utente o di sistema)
+    $uninstallKeys = @(
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OneDriveSetup.exe",
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OneDriveSetup.exe",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\OneDriveSetup.exe"
+    )
+    $uninstall = $null
+    foreach ($k in $uninstallKeys) {
+        $v = Get-RegValue $k "UninstallString"
+        if ($v) { $uninstall = $v; break }
+    }
+    if ($uninstall) {
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$uninstall`"" -Wait -WindowStyle Hidden
+    } else {
+        foreach ($exe in @("$env:SystemRoot\System32\OneDriveSetup.exe", "$env:SystemRoot\SysWOW64\OneDriveSetup.exe")) {
+            if (Test-Path -LiteralPath $exe) { Start-Process -FilePath $exe -ArgumentList "/uninstall" -Wait; break }
+        }
+    }
+    if (Get-Process -Name OneDrive -ErrorAction SilentlyContinue) {
+        Write-Host "OneDrive sembra ancora in esecuzione: verifica a mano da App installate." -ForegroundColor Yellow
+    } else {
+        Write-Host "OneDrive rimosso." -ForegroundColor Green
+    }
+}
+
 if ($tweakIds -contains "disableTelemetry") {
     # ---- TELEMETRIA / ID PUBBLICITARIO ----
     Write-Host "Riduzione telemetria..." -ForegroundColor Cyan
@@ -773,6 +905,57 @@ if ($tweakIds -contains "disableCopilot") {
     $null = Remove-AppxByName -Pattern "Microsoft.Copilot"
     $restartExplorer = $true
     Write-Host "Copilot e Recall disattivati." -ForegroundColor Green
+}
+
+if ($tweakIds -contains "disableOfficeTelemetry") {
+    # ---- TELEMETRIA DI OFFICE ----
+    Write-Host "Disattivazione telemetria di Office..." -ForegroundColor Cyan
+    Set-RegValue -Path "$RegOffice\common\clienttelemetry" -Name sendtelemetry -Value 3        # 3 = nessun dato diagnostico
+    Set-RegValue -Path "$RegOffice\16.0\common\clienttelemetry" -Name DisableTelemetry -Value 1
+    Set-RegValue -Path "$RegOffice\16.0\common\clienttelemetry" -Name SendTelemetry -Value 3
+    Set-RegValue -Path "$RegOffice\16.0\osm" -Name Enablelogging -Value 0
+    Set-RegValue -Path "$RegOffice\16.0\osm" -Name EnableUpload -Value 0
+    Write-Host "Telemetria di Office disattivata." -ForegroundColor Green
+}
+
+if ($tweakIds -contains "disableTelemetryTasks") {
+    # ---- ATTIVITA' PIANIFICATE DI TELEMETRIA ----
+    Write-Host "Disattivazione attivita' pianificate di telemetria..." -ForegroundColor Cyan
+    $tasks = @(Get-TelemetryTasks)
+    foreach ($t in $tasks) {
+        try {
+            Disable-ScheduledTask -TaskPath $t.TaskPath -TaskName $t.TaskName -ErrorAction Stop | Out-Null
+        } catch {
+            Write-Host "  Attivita' non disattivata ($($t.TaskName)): $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "Attivita' di telemetria disattivate: $($tasks.Count)." -ForegroundColor Green
+}
+
+if ($tweakIds -contains "disableLocation") {
+    # ---- POSIZIONE ----
+    Write-Host "Disattivazione posizione..." -ForegroundColor Cyan
+    Set-RegValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name DisableLocation -Value 1
+    Set-RegValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" -Name Value -Value "Deny" -Type String
+    Write-Host "Posizione disattivata." -ForegroundColor Green
+}
+
+if ($tweakIds -contains "disableScoobe") {
+    # ---- "COMPLETA LA CONFIGURAZIONE DEL DISPOSITIVO" E SUGGERIMENTI ----
+    Write-Host "Disattivazione schermate 'Completa la configurazione' e suggerimenti..." -ForegroundColor Cyan
+    Set-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" -Name ScoobeSystemSettingEnabled -Value 0
+    Set-RegValue -Path $RegCdm -Name "SubscribedContent-310093Enabled" -Value 0      # benvenuto dopo gli aggiornamenti
+    Set-RegValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.Suggested" -Name Enabled -Value 0
+    Write-Host "Schermate e suggerimenti disattivati." -ForegroundColor Green
+}
+
+if ($tweakIds -contains "edgeQuiet") {
+    # ---- EDGE SENZA INVADENZE ----
+    Write-Host "Configurazione di Edge..." -ForegroundColor Cyan
+    Set-RegValue -Path $RegEdgePolicy -Name HideFirstRunExperience -Value 1
+    Set-RegValue -Path $RegEdgePolicy -Name StartupBoostEnabled -Value 0
+    Set-RegValue -Path $RegEdgePolicy -Name BackgroundModeEnabled -Value 0
+    Write-Host "Edge: niente prima esecuzione, avvio rapido e lavoro in background." -ForegroundColor Green
 }
 
 if ($tweakIds -contains "copyMoveTo") {
@@ -883,6 +1066,20 @@ if ($tweakIds -contains "darkTheme") {
     Write-Host "Tema scuro attivato." -ForegroundColor Green
 }
 
+if ($tweakIds -contains "ultimatePerformance") {
+    # ---- PIANO PRESTAZIONI ECCELLENTI ----
+    Write-Host "Attivazione piano Prestazioni eccellenti..." -ForegroundColor Cyan
+    $out  = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>&1 | Out-String
+    $guid = [regex]::Match($out, '[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}').Value
+    if ($guid) {
+        powercfg /setactive $guid
+        Set-RegValue -Path $SetupMarkerKey -Name UltimatePlanGuid -Value $guid -Type String
+        Write-Host "Piano Prestazioni eccellenti attivo." -ForegroundColor Green
+    } else {
+        Write-Host "Piano Prestazioni eccellenti non disponibile su questa edizione di Windows." -ForegroundColor Yellow
+    }
+}
+
 if ($tweakIds -contains "powerPlan") {
     # ---- POWER / BOOT ----
     Write-Host "Configurazione power plan e boot..." -ForegroundColor Cyan
@@ -906,6 +1103,32 @@ if ($tweakIds -contains "taskbarWin11") {
         -Hint "Windows protegge l'impostazione dei Widget su questa build: disattivali da Impostazioni > Personalizzazione > Barra delle applicazioni."
     $restartExplorer = $true
     Write-Host "Barra applicazioni configurata." -ForegroundColor Green
+}
+
+if ($tweakIds -contains "taskbarEndTask") {
+    # ---- "TERMINA ATTIVITA'" NELLA BARRA ----
+    Write-Host "Aggiunta di 'Termina attivita' al tasto destro della barra..." -ForegroundColor Cyan
+    Set-RegValue -Path "$RegAdvanced\TaskbarDeveloperSettings" -Name TaskbarEndTask -Value 1
+    $restartExplorer = $true
+    Write-Host "'Termina attivita' attivato (Windows 11 23H2 o successivo)." -ForegroundColor Green
+}
+
+if ($tweakIds -contains "disableStickyKeys") {
+    # ---- SCORCIATOIE DI ACCESSIBILITA' ----
+    Write-Host "Disattivazione scorciatoia Tasti permanenti..." -ForegroundColor Cyan
+    Set-RegValue -Path "HKCU:\Control Panel\Accessibility\StickyKeys" -Name Flags -Value "506" -Type String
+    Set-RegValue -Path "HKCU:\Control Panel\Accessibility\ToggleKeys" -Name Flags -Value "58" -Type String
+    Set-RegValue -Path "HKCU:\Control Panel\Accessibility\Keyboard Response" -Name Flags -Value "122" -Type String
+    Write-Host "Scorciatoie Tasti permanenti, Tasti di commutazione e Filtro tasti disattivate." -ForegroundColor Green
+}
+
+if ($tweakIds -contains "disableMouseAccel") {
+    # ---- ACCELERAZIONE MOUSE ----
+    Write-Host "Disattivazione accelerazione del mouse..." -ForegroundColor Cyan
+    Set-RegValue -Path "HKCU:\Control Panel\Mouse" -Name MouseSpeed -Value "0" -Type String
+    Set-RegValue -Path "HKCU:\Control Panel\Mouse" -Name MouseThreshold1 -Value "0" -Type String
+    Set-RegValue -Path "HKCU:\Control Panel\Mouse" -Name MouseThreshold2 -Value "0" -Type String
+    Write-Host "Accelerazione del mouse disattivata (attiva dal prossimo accesso)." -ForegroundColor Green
 }
 
 if ($tweakIds -contains "disableFastStartup") {
@@ -1028,6 +1251,26 @@ if ($tweakIds -contains "windowsUpdate") {
     } catch {
         Write-Host "Windows Update non eseguito: $($_.Exception.Message)" -ForegroundColor Yellow
     }
+}
+
+if ($tweakIds -contains "cleanupTemp") {
+    # ---- PULIZIA FILE TEMPORANEI E CACHE DI WINDOWS UPDATE ----
+    Write-Host "Pulizia file temporanei e cache di Windows Update..." -ForegroundColor Cyan
+    $folders = @("$env:TEMP", "$env:SystemRoot\Temp", "$env:SystemRoot\SoftwareDistribution\Download")
+    $sizeOf = {
+        param($f)
+        $sum = (Get-ChildItem -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        if ($sum) { $sum } else { 0 }
+    }
+    $before = 0; foreach ($f in $folders) { $before += & $sizeOf $f }
+    # Windows Update deve essere fermo per liberare la sua cache
+    Stop-Service -Name wuauserv, bits -Force -ErrorAction SilentlyContinue
+    foreach ($f in $folders) {
+        Get-ChildItem -LiteralPath $f -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Start-Service -Name bits, wuauserv -ErrorAction SilentlyContinue
+    $after = 0; foreach ($f in $folders) { $after += & $sizeOf $f }
+    Write-Host ("Pulizia completata: liberati {0:N0} MB (i file in uso restano)." -f (($before - $after) / 1MB)) -ForegroundColor Green
 }
 
 # Segno che il setup e' stato eseguito: ai prossimi avvii il menu riflette lo stato reale del PC
