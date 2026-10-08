@@ -9,21 +9,19 @@ An automation script (`setup.cmd` + `setup.ps1` + `config.json`) for quick Windo
 
 - ☑️ **Selection menus** — at startup the script lists the programs and the optimizations from `config.json` in the terminal and lets you tick which ones to apply
 
-Optimizations selectable from the menu (`setup.ps1`):
+Optimizations (all selectable from the menu, nothing is applied before you confirm):
 
-- 🎨 **Wallpaper & Lock Screen** — sets a custom image for both desktop and lock screen, disabling Windows Spotlight
-- 🌑 **Dark Theme** — enables dark mode for apps and system UI
-- 🖱️ **Classic Context Menu** — restores the full right-click menu on Windows 11
-- ⚡ **Power Plan** — disables standby, monitor timeout and disk timeout; sets boot timeout to 3 seconds
-- 🔒 **Disable UAC** — removes User Account Control prompts. **Not ticked by default**: it lowers the system's security
-- 🔄 **Windows Update Loop** — installs all available updates, reboots if needed, and resumes automatically via Scheduled Task until no updates remain
-
-Always applied by the launcher (`setup.cmd`), before the menus:
-
+- 📋 **Copy To / Move To** — adds the CopyTo and MoveTo entries to the right-click menu
 - 📂 **File Extensions** — makes file extensions visible in Explorer
+- 🖱️ **Classic Context Menu** — restores the full right-click menu on Windows 11
 - 🔍 **Search** — disables Cortana and Bing integration in Windows Search
 - 🛡️ **Security Health** — restores the Security Health icon in the system tray
-- 📋 **Context Menu** — adds CopyTo and MoveTo entries to the right-click menu
+- 🌑 **Dark Theme** — enables dark mode for apps and system UI
+- 🎨 **Wallpaper & Lock Screen** — sets a custom image for both desktop and lock screen, disabling Windows Spotlight
+- ⚡ **Power Plan** — disables standby, monitor timeout and disk timeout; sets boot timeout to 3 seconds
+- 🏷️ **Registered Owner / Organization** — writes the owner and organization shown in `winver`. **Not ticked by default**; values come from `config.json`
+- 🔒 **Disable UAC** — removes User Account Control prompts. **Not ticked by default**: it lowers the system's security
+- 🔄 **Windows Update Loop** — installs all available updates, reboots if needed, and resumes automatically via Scheduled Task until no updates remain
 
 Programs:
 
@@ -93,7 +91,7 @@ If the console window is too small for the list, the script falls back to a numb
 
 - `apps[].id` — Chocolatey package name (required); `name` — label shown in the menu; `selected` — pre-ticked or not (default `true`)
 - `office` — remove the whole block to drop Office from the menu
-- `tweaks[].id` — one of `wallpaper`, `classicContextMenu`, `darkTheme`, `powerPlan`, `disableUac`, `windowsUpdate`; `name` and `selected` work as for `apps`. `wallpaper` also accepts `url` (image used for desktop and lock screen). An optimization missing from the list is not shown and not applied
+- `tweaks[].id` — one of `copyMoveTo`, `showFileExtensions`, `classicContextMenu`, `disableWebSearch`, `securityHealthTray`, `darkTheme`, `wallpaper`, `powerPlan`, `registeredOwner`, `disableUac`, `windowsUpdate`; `name` and `selected` work as for `apps`. `wallpaper` also accepts `url` (image used for desktop and lock screen); `registeredOwner` accepts `owner` and `organization`. An optimization missing from the list is not shown and not applied
 - `interactive` — set to `false` to skip the menus and apply everything with `"selected": true`. Same effect as running `setup.ps1 -Unattended`
 
 ---
@@ -102,7 +100,7 @@ If the console window is too small for the list, the script falls back to a numb
 
 | File | Role |
 |------|------|
-| `setup.cmd` | Launcher — applies registry tweaks, then calls `setup.ps1` |
+| `setup.cmd` | Launcher — asks for administrator rights and starts `setup.ps1` |
 | `setup.ps1` | Main script — selection menus, optimizations, software, Office, Windows Update loop |
 | `config.json` | Catalog of programs and optimizations with their default selection |
 | `Stop-WindowsUpdateLoop.ps1` | Stops the update/reboot loop and cleans up the Scheduled Task |

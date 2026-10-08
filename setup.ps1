@@ -19,8 +19,6 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Exit
 }
 
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope LocalMachine -Force
-
 # Legge il flag passato dal Scheduled Task per sapere se siamo in modalita post-riavvio
 $UpdateMode = [System.Environment]::GetEnvironmentVariable("SETUP_UPDATE_MODE", "Machine")
 
@@ -33,10 +31,15 @@ $runWindowsUpdate = $true
 
 # Ottimizzazioni gestite dallo script (id usati in config.json -> "tweaks")
 $KnownTweaks = [ordered]@{
-    wallpaper          = "Sfondo e schermata di blocco"
+    copyMoveTo         = "Voci 'Copia in' e 'Sposta in' nel menu contestuale"
+    showFileExtensions = "Mostra le estensioni dei file"
     classicContextMenu = "Menu contestuale classico (Windows 11)"
+    disableWebSearch   = "Disattiva Cortana e Bing nella ricerca"
+    securityHealthTray = "Icona Sicurezza di Windows nella systray"
     darkTheme          = "Tema scuro"
+    wallpaper          = "Sfondo e schermata di blocco"
     powerPlan          = "Power plan: niente standby/spegnimento schermo, boot 3 s"
+    registeredOwner    = "Proprietario e organizzazione registrati"
     disableUac         = "Disattiva UAC (sconsigliato)"
     windowsUpdate      = "Windows Update fino a sistema aggiornato (con riavvii)"
 }
@@ -96,6 +99,11 @@ function Get-SetupCatalog {
                 $url = $DefaultWallpaperUrl
                 if ($tweak.url) { $url = [string]$tweak.url }
                 $options = [pscustomobject]@{ Url = $url }
+            }
+            if ($id -eq "registeredOwner") {
+                $options = [pscustomobject]@{ Owner = ""; Organization = "" }
+                if ($null -ne $tweak.owner)        { $options.Owner        = [string]$tweak.owner }
+                if ($null -ne $tweak.organization) { $options.Organization = [string]$tweak.organization }
             }
             $tweaks += [pscustomobject]@{ Kind = "tweak"; Id = $id; Label = [string]$name; Selected = $selected; Options = $options }
         }
@@ -278,6 +286,53 @@ if ($UpdateMode -ne "1") {
     }
     Write-Host ""
 
+    # Esplora risorse viene riavviato una sola volta, alla fine, se una modifica lo richiede
+    $restartExplorer = $false
+
+    if ($tweakIds -contains "copyMoveTo") {
+        # ---- COPIA IN / SPOSTA IN ----
+        Write-Host "Aggiunta di 'Copia in' e 'Sposta in' al menu contestuale..." -ForegroundColor Cyan
+        reg add "HKCR\AllFilesystemObjects\shellex\ContextMenuHandlers\CopyTo" /ve /d "{C2FBB630-2971-11D1-A18C-00C04FD75D13}" /f | Out-Null
+        reg add "HKCR\AllFilesystemObjects\shellex\ContextMenuHandlers\MoveTo" /ve /d "{C2FBB631-2971-11D1-A18C-00C04FD75D13}" /f | Out-Null
+        Write-Host "'Copia in' e 'Sposta in' aggiunti." -ForegroundColor Green
+    }
+
+    if ($tweakIds -contains "showFileExtensions") {
+        # ---- ESTENSIONI FILE ----
+        Write-Host "Attivazione estensioni dei file..." -ForegroundColor Cyan
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v HideFileExt /t REG_DWORD /d 0 /f | Out-Null
+        $restartExplorer = $true
+        Write-Host "Estensioni dei file visibili." -ForegroundColor Green
+    }
+
+    if ($tweakIds -contains "disableWebSearch") {
+        # ---- CORTANA / BING ----
+        Write-Host "Disattivazione Cortana e Bing nella ricerca..." -ForegroundColor Cyan
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v CortanaConsent /t REG_DWORD /d 0 /f | Out-Null
+        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v BingSearchEnabled /t REG_DWORD /d 0 /f | Out-Null
+        Write-Host "Cortana e Bing disattivati nella ricerca." -ForegroundColor Green
+    }
+
+    if ($tweakIds -contains "securityHealthTray") {
+        # ---- SICUREZZA DI WINDOWS NELLA SYSTRAY ----
+        Write-Host "Ripristino icona Sicurezza di Windows nella systray..." -ForegroundColor Cyan
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray" /v HideSystray /t REG_DWORD /d 0 /f | Out-Null
+        reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" /v SecurityHealth /t REG_BINARY /d 060000000000000000000000 /f | Out-Null
+        reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v SecurityHealth /t REG_EXPAND_SZ /d "%windir%\system32\SecurityHealthSystray.exe" /f | Out-Null
+        Write-Host "Icona Sicurezza di Windows ripristinata." -ForegroundColor Green
+    }
+
+    if ($tweakIds -contains "registeredOwner") {
+        # ---- PROPRIETARIO / ORGANIZZAZIONE REGISTRATI ----
+        Write-Host "Impostazione proprietario e organizzazione registrati..." -ForegroundColor Cyan
+        $regInfo = ($setupTweaks | Where-Object { $_.Id -eq "registeredOwner" } | Select-Object -First 1).Options
+        # Set-ItemProperty e non reg.exe: PowerShell 5.1 scarta gli argomenti vuoti passati agli eseguibili
+        $ntPath  = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+        New-ItemProperty -Path $ntPath -Name RegisteredOwner        -Value $regInfo.Owner        -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path $ntPath -Name RegisteredOrganization -Value $regInfo.Organization -PropertyType String -Force | Out-Null
+        Write-Host "Proprietario e organizzazione impostati." -ForegroundColor Green
+    }
+
     if ($tweakIds -contains "wallpaper") {
         # ---- WALLPAPER ----
         Write-Host "Impostazione sfondo..." -ForegroundColor Cyan
@@ -321,10 +376,8 @@ public class Wallpaper {
     if ($tweakIds -contains "classicContextMenu") {
         # ---- MENU CONTESTUALE CLASSICO (Windows 11) ----
         Write-Host "Ripristino menu contestuale classico..." -ForegroundColor Cyan
-        reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /f /ve
-        taskkill /f /im explorer.exe
-        Start-Sleep -Seconds 2
-        Start-Process explorer.exe
+        reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /f /ve | Out-Null
+        $restartExplorer = $true
         Write-Host "Menu contestuale classico attivato." -ForegroundColor Green
     }
 
@@ -365,6 +418,13 @@ public class Wallpaper {
         $numProcs = (Get-WmiObject Win32_ComputerSystem).NumberOfLogicalProcessors
         bcdedit /set '{current}' numproc $numProcs
         Write-Host "Power plan e boot configurati." -ForegroundColor Green
+    }
+
+    if ($restartExplorer) {
+        Write-Host "Riavvio di Esplora risorse per applicare le modifiche..." -ForegroundColor Cyan
+        taskkill /f /im explorer.exe | Out-Null
+        Start-Sleep -Seconds 2
+        Start-Process explorer.exe
     }
 
     if ($chocoApps.Count -gt 0) {
