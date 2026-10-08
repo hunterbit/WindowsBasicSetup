@@ -725,7 +725,9 @@ if ($tweakIds -contains "windowsUpdate") {
     try {
         Import-Module PSWindowsUpdate -ErrorAction Stop
         Write-Host "Ricerca e installazione aggiornamenti Windows..." -ForegroundColor Cyan
-        Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot -Verbose
+        # -IgnoreReboot: non riavvia mai, il riavvio resta a cura dell'utente.
+        # -NotCategory Upgrades: esclude i passaggi di versione (es. Windows 10 -> 11).
+        Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot -NotCategory "Upgrades" -Verbose
         if (Get-WURebootStatus -Silent) { $rebootNeeded = $true }
         Write-Host "Aggiornamenti installati. Alcuni compaiono solo dopo il riavvio: in quel caso rilancia Windows Update." -ForegroundColor Green
     } catch {

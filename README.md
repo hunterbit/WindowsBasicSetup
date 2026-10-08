@@ -25,7 +25,7 @@ Ticked by default:
 - 🛡️ **Security Health** — restores the Security Health icon in the system tray
 - ⚡ **Power Plan** — on mains power: no standby, monitor or disk timeout; boot menu timeout 3 seconds. Battery settings are left alone
 - 🚀 **Disable Fast Startup** — shutdown really ends the session (avoids endless uptime and half-applied updates)
-- 🔄 **Windows Update** — installs all available updates in a single pass, without rebooting
+- 🔄 **Windows Update** — installs all available updates in a single pass and never reboots: if a reboot is needed the script only says so. Version upgrades (e.g. Windows 10 → 11) are excluded
 
 Available but not ticked by default:
 
