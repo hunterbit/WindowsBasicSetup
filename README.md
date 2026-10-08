@@ -151,7 +151,6 @@ On every start the script reads the real state of the PC:
 | `setup.cmd` | Launcher — asks for administrator rights and starts `setup.ps1` |
 | `setup.ps1` | Main script — selection menus, optimizations, software, Office, Windows Update |
 | `config.json` | Catalog of programs and optimizations with their default selection |
-| `Stop-WindowsUpdateLoop.ps1` | Only for PCs set up with older versions of this script, which rebooted in a loop: stops the loop and removes its Scheduled Task |
 
 ---
 
