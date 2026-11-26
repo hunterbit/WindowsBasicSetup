@@ -52,6 +52,7 @@ $handler = [System.Windows.RoutedEventHandler]{
                 0 {
                     $hwnd = (New-Object System.Windows.Interop.WindowInteropHelper $script:w).Handle
                     Write-Trace "finestra visibile: $([WbsConsoleWindow]::IsWindowVisible($hwnd))"
+                    if ((Get-El "Summary").Text -match "non verificato") { Write-Trace "ERRORE verifica dello stato: $((Get-El 'Summary').Text)" }
                     Save-Shot $script:w "1-programmi"
                 }
                 1 { (Get-El "AppSearch").Text = "java" }

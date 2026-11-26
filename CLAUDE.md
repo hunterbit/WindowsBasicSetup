@@ -51,4 +51,6 @@ Conventions:
 
 The test "ogni ottimizzazione ha un'azione e viceversa" fails if steps 1 and 2 don't match.
 
+Every catalog entry (apps, office, tweaks) should have a `category` and a short Italian `description` (shown in the window). Files referenced in `config.json` (wallpaper image, BGInfo `.bgi`) are resolved relative to its folder in `Get-SetupCatalog`. Executables downloaded by an action at run time must be verified (see `bgInfo`: Authenticode signature, signer Microsoft) before use.
+
 Programs: Chocolatey package id in `config.json` `apps`, with a `category`; non-Chocolatey programs use `url` (must be `https://`) and are saved to the Public Desktop. Chocolatey checksums are always verified; `"ignoreChecksums": true` is a per-package opt-out — never re-add `--ignore-checksums` globally.

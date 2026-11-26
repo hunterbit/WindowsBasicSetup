@@ -51,6 +51,7 @@ $KnownTweaks = [ordered]@{
     securityHealthTray = "Icona Sicurezza di Windows nella systray"
     darkTheme          = "Tema scuro"
     wallpaper          = "Sfondo e schermata di blocco"
+    bgInfo             = "Info PC sul desktop (BGInfo)"
     powerPlan          = "Power plan: niente standby/spegnimento schermo, boot 3 s"
     registeredOwner    = "Proprietario e organizzazione registrati"
     disableUac         = "Disattiva UAC (sconsigliato)"
@@ -68,6 +69,8 @@ function Get-SetupCatalog {
     } catch {
         throw "File di configurazione non valido ($Path): $($_.Exception.Message)"
     }
+    # I file indicati in config.json (sfondo, configurazione di BGInfo) sono relativi alla sua cartella
+    $configDir = Split-Path -Parent (Resolve-Path -LiteralPath $Path).ProviderPath
 
     $order = 0
     $items = @()
@@ -88,11 +91,11 @@ function Get-SetupCatalog {
                 if ($app.fileName) { $fileName = [string]$app.fileName }
                 if (-not $fileName) { throw "config.json: per '$($app.id)' indica 'fileName' (nome del file da salvare)." }
                 $options = [pscustomobject]@{ Url = $url; FileName = $fileName }
-                $items += [pscustomobject]@{ Kind = "download"; Id = [string]$app.id; Label = [string]$name; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
+                $items += [pscustomobject]@{ Kind = "download"; Id = [string]$app.id; Label = [string]$name; Description = [string]$app.description; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
             } else {
                 # Le impronte (checksum) dei pacchetti si verificano sempre, salvo eccezione esplicita per il singolo programma
                 $options = [pscustomobject]@{ IgnoreChecksums = ($app.ignoreChecksums -eq $true) }
-                $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
+                $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Description = [string]$app.description; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
             }
         }
     }
@@ -109,7 +112,7 @@ function Get-SetupCatalog {
         $label = "{0} ({1}, {2})" -f $name, $office.Language, $office.Platform
         $category = "Altro"
         if ($config.office.category) { $category = [string]$config.office.category }
-        $items += [pscustomobject]@{ Kind = "office"; Id = $office.ProductId; Label = $label; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $office }
+        $items += [pscustomobject]@{ Kind = "office"; Id = $office.ProductId; Label = $label; Description = [string]$config.office.description; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $office }
     }
 
     $tweaks = @()
@@ -127,9 +130,18 @@ function Get-SetupCatalog {
             if ($null -ne $tweak.selected) { $selected = [bool]$tweak.selected }
             $options = $null
             if ($id -eq "wallpaper") {
+                # Url: indirizzo https:// oppure file immagine (percorso relativo = cartella di config.json)
                 $url = $DefaultWallpaperUrl
                 if ($tweak.url) { $url = [string]$tweak.url }
+                if ($url -notmatch '^https://' -and -not [IO.Path]::IsPathRooted($url)) { $url = Join-Path $configDir $url }
                 $options = [pscustomobject]@{ Url = $url }
+            }
+            if ($id -eq "bgInfo") {
+                # File .bgi creato con BGInfo (campi, posizione, colori); se manca si usa l'aspetto predefinito
+                $bgi = "bginfo.bgi"
+                if ($tweak.config) { $bgi = [string]$tweak.config }
+                if (-not [IO.Path]::IsPathRooted($bgi)) { $bgi = Join-Path $configDir $bgi }
+                $options = [pscustomobject]@{ ConfigFile = $bgi }
             }
             if ($id -eq "registeredOwner") {
                 $options = [pscustomobject]@{ Owner = ""; Organization = "" }
@@ -148,7 +160,7 @@ function Get-SetupCatalog {
             }
             $category = "Altro"
             if ($tweak.category) { $category = [string]$tweak.category }
-            $tweaks += [pscustomobject]@{ Kind = "tweak"; Id = $id; Label = [string]$name; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
+            $tweaks += [pscustomobject]@{ Kind = "tweak"; Id = $id; Label = [string]$name; Description = [string]$tweak.description; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
         }
     }
 
@@ -253,6 +265,9 @@ $LockScreenFile = "C:\Windows\Web\Screen\lockscreen.jpg"
 $SetupMarkerKey = "HKLM:\SOFTWARE\WindowsBasicSetup"
 $RegOffice      = "HKCU:\Software\Policies\Microsoft\office"
 $RegEdgePolicy  = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+$RegRunMachine  = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+$BgInfoDir      = Join-Path $env:ProgramData "WindowsBasicSetup\BGInfo"
+$BgInfoRunName  = "WindowsBasicSetupBGInfo"
 
 # Attivita' pianificate che raccolgono e inviano dati di utilizzo (percorso, nome)
 $TelemetryTasks = @(
@@ -482,6 +497,14 @@ $TweakState = @{
         Revert = {
             $r = Disable-WindowsOptionalFeature -Online -FeatureName NetFx3 -NoRestart -ErrorAction Stop
             if ($r.RestartNeeded) { $Run.RebootNeeded = $true }
+        }
+    }
+    bgInfo = @{
+        Test   = { [bool](Get-RegValue $RegRunMachine $BgInfoRunName) }
+        # Smette di partire all'accesso; il testo gia' disegnato sullo sfondo resta fino al cambio di sfondo
+        Revert = {
+            Remove-RegValue $RegRunMachine $BgInfoRunName
+            Remove-Item -LiteralPath $BgInfoDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }
@@ -772,7 +795,14 @@ $TweakActions = [ordered]@{
         Write-SetupLog Info "Impostazione sfondo..."
         $wpUrl  = $Item.Options.Url
         $wpPath = Join-Path $env:APPDATA "wallpaper.jpg"
-        Invoke-WebRequest -Uri $wpUrl -OutFile $wpPath -UseBasicParsing
+        if ($wpUrl -match '^https://') {
+            Invoke-WebRequest -Uri $wpUrl -OutFile $wpPath -UseBasicParsing -ErrorAction Stop
+        } elseif (Test-Path -LiteralPath $wpUrl -PathType Leaf) {
+            # Immagine scelta dal PC (anche png/bmp: Windows la riconosce dal contenuto, non dall'estensione)
+            Copy-Item -LiteralPath $wpUrl -Destination $wpPath -Force -ErrorAction Stop
+        } else {
+            throw "immagine non trovata: $wpUrl"
+        }
 
         Set-DesktopWallpaper $wpPath
         Write-SetupLog Ok "Sfondo impostato."
@@ -797,6 +827,40 @@ $TweakActions = [ordered]@{
         New-ItemProperty -Path $cspPath -Name LockScreenImageUrl    -Value $lockDest -PropertyType String -Force | Out-Null
         New-ItemProperty -Path $cspPath -Name LockScreenImageStatus -Value 1         -PropertyType DWORD  -Force | Out-Null
         Write-SetupLog Ok "Lockscreen impostata."
+    }
+    bgInfo = {
+        param($Item)
+        # ---- BGINFO: INFO DEL PC SUL DESKTOP, A OGNI ACCESSO E PER TUTTI GLI UTENTI ----
+        # Dopo lo sfondo: BGInfo scrive le informazioni sopra l'immagine del desktop corrente
+        Write-SetupLog Info "Installazione BGInfo..."
+        $exeName = "Bginfo.exe"
+        if ([Environment]::Is64BitOperatingSystem) { $exeName = "Bginfo64.exe" }
+        New-Item -ItemType Directory -Force -Path $BgInfoDir | Out-Null
+        $exe = Join-Path $BgInfoDir $exeName
+        $tmp = "$exe.download"
+        # Sito ufficiale di Sysinternals (Microsoft); l'eseguibile si usa solo se firmato da Microsoft
+        Invoke-WebRequest -Uri "https://live.sysinternals.com/$exeName" -OutFile $tmp -UseBasicParsing -ErrorAction Stop
+        $sig = Get-AuthenticodeSignature -LiteralPath $tmp
+        if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+            throw "firma digitale di $exeName non valida ($($sig.Status)): file scartato"
+        }
+        Move-Item -LiteralPath $tmp -Destination $exe -Force
+
+        $bgArgs = @()
+        if (Test-Path -LiteralPath $Item.Options.ConfigFile -PathType Leaf) {
+            $bgi = Join-Path $BgInfoDir "bginfo.bgi"
+            Copy-Item -LiteralPath $Item.Options.ConfigFile -Destination $bgi -Force
+            $bgArgs += "`"$bgi`""
+            Write-SetupLog Info "Configurazione: $($Item.Options.ConfigFile)"
+        } else {
+            Write-SetupLog Info "Nessun file $(Split-Path -Leaf $Item.Options.ConfigFile): aspetto predefinito di BGInfo."
+        }
+        $bgArgs += "/timer:0", "/silent", "/nolicprompt"
+        Set-RegValue -Path $RegRunMachine -Name $BgInfoRunName -Value ("`"$exe`" " + ($bgArgs -join " ")) -Type String
+        # Subito anche per l'utente corrente, senza aspettare il prossimo accesso
+        Start-Process -FilePath $exe -ArgumentList $bgArgs
+        Write-SetupLog Ok "BGInfo attivo: parte a ogni accesso."
     }
     classicContextMenu = {
         param($Item)

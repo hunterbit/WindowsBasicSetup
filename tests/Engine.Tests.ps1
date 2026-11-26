@@ -38,6 +38,23 @@ Describe "Get-SetupCatalog" {
         ($c = Get-SetupCatalog -Path $p).Items[0].Options.IgnoreChecksums | Should Be $false
         $c.Items[1].Options.IgnoreChecksums | Should Be $true
     }
+    It "legge le descrizioni" {
+        $p = New-TestConfig '{ "apps": [ { "id": "a", "description": "Fa qualcosa" } ], "tweaks": [ { "id": "darkTheme" } ] }'
+        $c = Get-SetupCatalog -Path $p
+        $c.Items[0].Description | Should Be "Fa qualcosa"
+        $c.Tweaks[0].Description | Should Be ""
+    }
+    It "risolve sfondo e configurazione di BGInfo rispetto alla cartella di config.json" {
+        $p = New-TestConfig '{ "tweaks": [ { "id": "wallpaper", "url": "sfondo.jpg" }, { "id": "bgInfo" } ] }'
+        $dir = Split-Path -Parent $p
+        $c = Get-SetupCatalog -Path $p
+        ($c.Tweaks | Where-Object { $_.Id -eq "wallpaper" }).Options.Url | Should Be (Join-Path $dir "sfondo.jpg")
+        ($c.Tweaks | Where-Object { $_.Id -eq "bgInfo" }).Options.ConfigFile | Should Be (Join-Path $dir "bginfo.bgi")
+    }
+    It "lascia invariati gli indirizzi https dello sfondo" {
+        $p = New-TestConfig '{ "tweaks": [ { "id": "wallpaper", "url": "https://example.com/a.jpg" } ] }'
+        (Get-SetupCatalog -Path $p).Tweaks[0].Options.Url | Should Be "https://example.com/a.jpg"
+    }
     It "rifiuta un download non https" {
         $p = New-TestConfig '{ "apps": [ { "id": "x", "url": "http://example.com/x.exe" } ] }'
         { Get-SetupCatalog -Path $p } | Should Throw

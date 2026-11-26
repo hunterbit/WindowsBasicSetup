@@ -15,6 +15,7 @@ public class WbsSetupRow : INotifyPropertyChanged {
     public event PropertyChangedEventHandler PropertyChanged;
     public int Index { get; set; }
     public string Label { get; set; }
+    public string Description { get; set; }
     public string Category { get; set; }
     private bool isActive;
     public bool IsActive {
@@ -50,6 +51,7 @@ function New-WbsRows {
         $r = New-Object WbsSetupRow
         $r.Index    = $i
         $r.Label    = $it.Label
+        $r.Description = $it.Description
         $r.Category = $it.Category
         $r.IsActive = ($it.Active -eq $true)
         $r.Selected = [bool]$it.Selected
@@ -59,6 +61,7 @@ function New-WbsRows {
 }
 
 # Vista delle righe raggruppata per categoria e filtrata dal testo della casella di ricerca
+# (cerca in nome, descrizione e categoria)
 function New-WbsView {
     param($Rows, $SearchBox)
     $view = New-Object System.Windows.Data.ListCollectionView -ArgumentList (,$Rows)
@@ -67,8 +70,11 @@ function New-WbsView {
     $view.Filter = [Predicate[object]]{
         param($r)
         $t = $SearchBox.Text.Trim()
-        (-not $t) -or ($r.Label.IndexOf($t, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
-            ("$($r.Category)".IndexOf($t, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+        if (-not $t) { return $true }
+        foreach ($f in @($r.Label, $r.Description, $r.Category)) {
+            if ("$f".IndexOf($t, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+        }
+        return $false
     }.GetNewClosure()
     return ,$view
 }
@@ -93,6 +99,8 @@ function Start-EngineJob {
         try {
             . $EnginePath
             $result = & ([scriptblock]::Create($Script)) @Arguments
+            # Uno script senza output da' AutomationNull, che dentro un array fa fallire Enqueue
+            if ($null -eq $result) { $result = $null }
             $Queue.Enqueue(@("Done", $result))
         } catch {
             $Queue.Enqueue(@("Fatal", $_.Exception.Message))
@@ -133,7 +141,8 @@ function Show-SetupGui {
     $ui = @{}
     foreach ($n in @("SysInfo", "LoadView", "LoadProgress", "LoadStep", "SelectView", "RunView", "AppList", "TweakList", "AppSearch", "TweakSearch",
                      "AppAll", "AppNone", "TweakAll", "TweakNone", "PcName", "WallpaperUrl", "Owner",
-                     "Organization", "CurrentStep", "Progress", "LogBox", "StartButton", "CloseButton", "Summary")) {
+                     "Organization", "CurrentStep", "Progress", "LogBox", "StartButton", "CloseButton", "Summary",
+                     "WallpaperBrowse")) {
         $ui[$n] = $window.FindName($n)
     }
 
@@ -154,7 +163,25 @@ function Show-SetupGui {
     $opt = @{}
     foreach ($t in $Tweaks) { $opt[$t.Id] = $t }
     if ($opt.renameComputer)  { $ui.PcName.Text = $opt.renameComputer.Options.ComputerName } else { $ui.PcName.IsEnabled = $false }
-    if ($opt.wallpaper)       { $ui.WallpaperUrl.Text = $opt.wallpaper.Options.Url } else { $ui.WallpaperUrl.IsEnabled = $false }
+    if ($opt.wallpaper)       { $ui.WallpaperUrl.Text = $opt.wallpaper.Options.Url } else { $ui.WallpaperUrl.IsEnabled = $false; $ui.WallpaperBrowse.IsEnabled = $false }
+
+    # Sfoglia: parte dalla cartella da cui e' stato lanciato il setup; scelto un file, spunta "Sfondo"
+    $ui.WallpaperBrowse.Add_Click({
+        $dlg = New-Object Microsoft.Win32.OpenFileDialog
+        $dlg.Title  = "Scegli l'immagine per sfondo e schermata di blocco"
+        $dlg.Filter = "Immagini (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|Tutti i file (*.*)|*.*"
+        $current = $ui.WallpaperUrl.Text.Trim()
+        if ($current -and $current -notmatch '^https://' -and (Test-Path -LiteralPath (Split-Path -Parent $current) -ErrorAction SilentlyContinue)) {
+            $dlg.InitialDirectory = Split-Path -Parent $current
+        } else {
+            $dlg.InitialDirectory = Split-Path -Parent $PSScriptRoot
+        }
+        if ($dlg.ShowDialog($window)) {
+            $ui.WallpaperUrl.Text = $dlg.FileName
+            foreach ($r in $tweakRows) { if ($Tweaks[$r.Index].Id -eq "wallpaper") { $r.Selected = $true } }
+            & $updateSummary
+        }
+    })
     if ($opt.registeredOwner) {
         $ui.Owner.Text        = $opt.registeredOwner.Options.Owner
         $ui.Organization.Text = $opt.registeredOwner.Options.Organization
@@ -293,8 +320,8 @@ function Show-SetupGui {
         }
         if ($opt.wallpaper -and $sel.wallpaper) {
             $url = $ui.WallpaperUrl.Text.Trim()
-            if ($url -notmatch '^https://') {
-                [void][System.Windows.MessageBox]::Show($window, "L'URL dello sfondo deve iniziare con https://", "Sfondo", "OK", "Warning")
+            if ($url -notmatch '^https://' -and -not (Test-Path -LiteralPath $url -PathType Leaf)) {
+                [void][System.Windows.MessageBox]::Show($window, "Sfondo: scegli un file immagine con Sfoglia (in Opzioni) oppure indica un indirizzo che inizi con https://", "Sfondo", "OK", "Warning")
                 return
             }
             $opt.wallpaper.Options.Url = $url

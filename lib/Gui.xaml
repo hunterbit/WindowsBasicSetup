@@ -42,6 +42,8 @@
         <CheckBox IsChecked="{Binding Selected, Mode=TwoWay}" VerticalContentAlignment="Center">
           <TextBlock Text="{Binding Label}" Margin="4,0,0,0"/>
         </CheckBox>
+        <TextBlock Text="{Binding Description}" ToolTip="{Binding Description}" Margin="12,0,0,0" FontSize="12"
+                   Foreground="#808080" VerticalAlignment="Center" MaxWidth="460" TextTrimming="CharacterEllipsis"/>
         <TextBlock x:Name="state" Text="{Binding State}" Margin="12,0,0,0" FontSize="12" Foreground="#107C10" VerticalAlignment="Center"/>
       </StackPanel>
       <DataTemplate.Triggers>
@@ -124,7 +126,7 @@
             </StackPanel>
             <TextBox x:Name="TweakSearch" Padding="4,3"/>
           </DockPanel>
-          <Expander DockPanel.Dock="Bottom" Header="Opzioni (nome PC, proprietario, sfondo)" Margin="12,0,12,10" Padding="0,8,0,0">
+          <Expander DockPanel.Dock="Bottom" Header="Opzioni (nome PC, sfondo, proprietario)" Margin="12,0,12,10" Padding="0,8,0,0">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -139,8 +141,11 @@
               <TextBlock Grid.Row="0" Grid.Column="0" Text="Nuovo nome PC" VerticalAlignment="Center" Margin="0,0,8,6"/>
               <TextBox   Grid.Row="0" Grid.Column="1" x:Name="PcName" MaxLength="15" Padding="4,3" Margin="0,0,16,6"
                          ToolTip="Massimo 15 caratteri tra lettere, cifre e trattino, non solo cifre"/>
-              <TextBlock Grid.Row="0" Grid.Column="2" Text="URL sfondo" VerticalAlignment="Center" Margin="0,0,8,6"/>
-              <TextBox   Grid.Row="0" Grid.Column="3" x:Name="WallpaperUrl" Padding="4,3" Margin="0,0,0,6"/>
+              <TextBlock Grid.Row="0" Grid.Column="2" Text="Sfondo" VerticalAlignment="Center" Margin="0,0,8,6"/>
+              <DockPanel Grid.Row="0" Grid.Column="3" Margin="0,0,0,6">
+                <Button x:Name="WallpaperBrowse" DockPanel.Dock="Right" Content="Sfoglia…" Style="{StaticResource PlainButton}"/>
+                <TextBox x:Name="WallpaperUrl" Padding="4,3" ToolTip="File immagine (jpg, png, bmp) oppure indirizzo https://"/>
+              </DockPanel>
               <TextBlock Grid.Row="1" Grid.Column="0" Text="Proprietario" VerticalAlignment="Center" Margin="0,0,8,0"/>
               <TextBox   Grid.Row="1" Grid.Column="1" x:Name="Owner" Padding="4,3" Margin="0,0,16,0"/>
               <TextBlock Grid.Row="1" Grid.Column="2" Text="Organizzazione" VerticalAlignment="Center" Margin="0,0,8,0"/>

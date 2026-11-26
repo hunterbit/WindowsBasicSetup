@@ -42,7 +42,8 @@ Available but not ticked by default:
 - 📍 **Disable location** — turns off location services for the whole PC (weather and maps lose your position)
 - 📌 **Windows 11 taskbar** — aligned left, no Widgets, Task View or Chat buttons
 - 🌑 **Dark Theme**
-- 🎨 **Wallpaper & Lock Screen** — image URL in `config.json`
+- 🎨 **Wallpaper & Lock Screen** — an image file picked with **Sfoglia…** in the window (or set in `config.json`), or an `https://` address
+- 🏷️ **PC info on the desktop (BGInfo)** — downloads BGInfo from Microsoft Sysinternals (used only if signed by Microsoft) and runs it at every sign-in for all users, writing PC name, IP and other details on the wallpaper. Fields, position and colours come from `bginfo.bgi` next to `setup.cmd` (create it once with BGInfo); without it BGInfo's default layout is used
 - 💤 **Disable hibernation** — removes `hiberfil.sys`
 - 🏎️ **Ultimate Performance** — creates and activates the Ultimate Performance power plan; for desktops that must run at full speed
 - 🖲️ **Mouse acceleration off** — 1:1 pointer movement (from the next sign-in)
@@ -75,7 +76,7 @@ Available but not ticked by default:
 1. Download the whole folder (`setup.cmd`, `setup.ps1`, `config.json` and the `lib` folder) and keep the files together
 2. Double-click `setup.cmd`
 3. Accept the UAC prompt
-4. In the window, tick the programs and the optimizations (use **Cerca** to filter, **Tutti / Nessuno** act on the visible entries). New PC name, registered owner and wallpaper URL are in **Opzioni** at the bottom of the Optimizations tab
+4. In the window, tick the programs and the optimizations (use **Cerca** to filter, **Tutti / Nessuno** act on the visible entries; each entry shows a short description, the full text appears on mouse-over). New PC name, wallpaper (**Sfoglia…** opens the folder `setup.cmd` was started from) and registered owner are in **Opzioni** at the bottom of the Optimizations tab
 5. Press **Avvia** and confirm
 6. Wait — the window shows progress and the log; at the end it tells you which programs failed and whether a reboot is needed. It cannot be closed while the setup runs
 
@@ -115,7 +116,7 @@ On every start the script reads the real state of the PC:
 | not active | unticked | nothing |
 
 - On the first run on a PC, optimizations that are not active start ticked or not as set in `config.json`. At the end the script writes `HKLM\SOFTWARE\WindowsBasicSetup`; from then on non-active optimizations start unticked, so the menu shows exactly how the PC is
-- Detected and restorable: Copy To/Move To, file extensions, classic context menu, Cortana/Bing, dark theme, wallpaper & lock screen, power plan, Fast Startup, hibernation, Remote Desktop, UAC, telemetry, suggestions, Copilot/Recall, Windows 11 taskbar, .NET 3.5, Office telemetry, telemetry tasks, location, setup reminders, Edge, End task, Sticky Keys shortcut, mouse acceleration, Ultimate Performance. Restoring the power plan resets all power plans to factory settings; restoring Copilot does not reinstall the Copilot app
+- Detected and restorable: Copy To/Move To, file extensions, classic context menu, Cortana/Bing, dark theme, wallpaper & lock screen, power plan, Fast Startup, hibernation, Remote Desktop, UAC, telemetry, suggestions, Copilot/Recall, Windows 11 taskbar, .NET 3.5, Office telemetry, telemetry tasks, location, setup reminders, Edge, End task, Sticky Keys shortcut, mouse acceleration, Ultimate Performance, BGInfo. Restoring BGInfo stops it at sign-in, but the text already drawn stays until the wallpaper changes. Restoring the power plan resets all power plans to factory settings; restoring Copilot does not reinstall the Copilot app
 - Actions that have no state (restore point, removing preinstalled apps and OneDrive, rename, Windows Update, cleanup, Security Health icon, registered owner) always start as set in `config.json`; removed apps are not reinstalled
 - Programs: installed ones are not detected
 - With `-Unattended` or `"interactive": false` nothing is ever restored: the script only applies
@@ -148,12 +149,13 @@ On every start the script reads the real state of the PC:
 ```
 
 - `apps[].id` — Chocolatey package name (required; search it on https://community.chocolatey.org/packages); `name` — label shown in the menu; `selected` — pre-ticked or not (default `true`)
+- `description` (apps, `office`, tweaks) — short text shown next to the name in the window
 - `category` (apps, `office`, tweaks) — group shown in the window; entries without it go under "Altro". Categories appear in the order of their first entry in the file. The terminal menus ignore it
 - `ignoreChecksums: true` — only for a Chocolatey package whose checksum is known to be out of date: installs it without verifying the downloaded file. Leave it out otherwise
 - Programs that are not on Chocolatey: add `url` (official `https://` download link) to the entry. The file is saved on the Public Desktop, named after the URL or after `fileName` if given; `id` is then just a unique name. Example: `{ "id": "supremo", "name": "Supremo", "selected": false, "url": "https://www.nanosystems.it/public/download/Supremo.exe" }`
 - `office` — remove the whole block to drop Office from the menu
-- `tweaks[].id` — one of `restorePoint`, `removeBloatware`, `disableTelemetry`, `disableSuggestions`, `disableCopilot`, `disableOfficeTelemetry`, `disableTelemetryTasks`, `disableLocation`, `disableScoobe`, `edgeQuiet`, `taskbarEndTask`, `disableStickyKeys`, `disableMouseAccel`, `ultimatePerformance`, `cleanupTemp`, `removeOneDrive`, `copyMoveTo`, `showFileExtensions`, `classicContextMenu`, `disableWebSearch`, `securityHealthTray`, `taskbarWin11`, `darkTheme`, `wallpaper`, `powerPlan`, `disableFastStartup`, `disableHibernation`, `enableRdp`, `renameComputer`, `registeredOwner`, `enableNetFx3`, `disableUac`, `windowsUpdate`. An optimization missing from the list is not shown and not applied
-- Extra fields: `removeBloatware` → `packages` (Store package names, `*` wildcards allowed); `renameComputer` → `computerName` (empty = type it in Opzioni in the window, or at the prompt in the terminal); `wallpaper` → `url`; `registeredOwner` → `owner`, `organization`
+- `tweaks[].id` — one of `restorePoint`, `removeBloatware`, `disableTelemetry`, `disableSuggestions`, `disableCopilot`, `disableOfficeTelemetry`, `disableTelemetryTasks`, `disableLocation`, `disableScoobe`, `edgeQuiet`, `taskbarEndTask`, `disableStickyKeys`, `disableMouseAccel`, `ultimatePerformance`, `cleanupTemp`, `removeOneDrive`, `copyMoveTo`, `showFileExtensions`, `classicContextMenu`, `disableWebSearch`, `securityHealthTray`, `taskbarWin11`, `darkTheme`, `wallpaper`, `bgInfo`, `powerPlan`, `disableFastStartup`, `disableHibernation`, `enableRdp`, `renameComputer`, `registeredOwner`, `enableNetFx3`, `disableUac`, `windowsUpdate`. An optimization missing from the list is not shown and not applied
+- Extra fields: `removeBloatware` → `packages` (Store package names, `*` wildcards allowed); `renameComputer` → `computerName` (empty = type it in Opzioni in the window, or at the prompt in the terminal); `wallpaper` → `url` (`https://` address or image file; a relative path is relative to the folder of `config.json`); `bgInfo` → `config` (the `.bgi` file, default `bginfo.bgi`, relative to the folder of `config.json`); `registeredOwner` → `owner`, `organization`
 - Order — in the window entries keep the order of `config.json` inside their category; in the terminal menus the entries ticked by default come first, then the others
 - `interactive` — set to `false` to skip the menus and apply everything with `"selected": true`. Same effect as running `setup.ps1 -Unattended`
 
