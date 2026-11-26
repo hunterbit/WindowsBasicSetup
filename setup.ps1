@@ -47,6 +47,7 @@ if ([Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) { exit }
 try {
     $catalog = Get-SetupCatalog -Path $ConfigPath
 } catch {
+    [void](Set-ConsoleWindow $true)
     Write-Host $_.Exception.Message -ForegroundColor Red
     Read-Host "Premi INVIO per chiudere"
     exit 1
@@ -69,7 +70,8 @@ if ($menuShown -and -not $Console) {
     if (Show-SetupGui -Items $setupItems -Tweaks $setupTweaks) { exit }
     Write-Host "Uso il menu a terminale." -ForegroundColor Yellow
 }
-
+# Da qui si lavora nel terminale (menu, -Unattended o finestra non disponibile): la console deve vedersi
+[void](Set-ConsoleWindow $true)
 if ($menuShown) {
     if ($setupItems.Count -gt 0) {
         Select-SetupItems -Items $setupItems

@@ -1,7 +1,8 @@
 # ============================================================
 #  WindowsBasicSetup - interfaccia grafica (WPF, layout in Gui.xaml)
 #  Scelta di programmi e ottimizzazioni per categoria, conferma, poi esecuzione del motore in un
-#  runspace separato cosi' la finestra resta reattiva. Richiede lib\Engine.ps1 gia' caricato.
+#  runspace separato cosi' la finestra resta reattiva. Richiede lib\Engine.ps1 e lib\Console.ps1
+#  gia' caricati.
 # ============================================================
 
 # Riga degli elenchi. Classe C# perche' WPF non si collega alle proprieta' dei pscustomobject
@@ -290,6 +291,13 @@ function Show-SetupGui {
         }
     })
 
-    [void]$window.ShowDialog()
+    # Mentre la finestra e' aperta la console resta nascosta. Nascondendola si consuma anche la prima
+    # ShowWindow del processo, che con l'avvio nascosto di setup.cmd renderebbe invisibile la finestra.
+    $consoleWasVisible = Set-ConsoleWindow $false
+    try {
+        [void]$window.ShowDialog()
+    } finally {
+        if ($consoleWasVisible) { [void](Set-ConsoleWindow $true) }
+    }
     return $true
 }

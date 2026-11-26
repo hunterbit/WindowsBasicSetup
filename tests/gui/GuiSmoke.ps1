@@ -6,6 +6,7 @@ param([string]$Out = (Join-Path $env:TEMP "wbs-gui-smoke"))
 $Repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 . (Join-Path $Repo "lib\Engine.ps1")
+. (Join-Path $Repo "lib\Console.ps1")
 . (Join-Path $Repo "lib\Gui.ps1")
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
@@ -46,7 +47,11 @@ $handler = [System.Windows.RoutedEventHandler]{
         Write-Trace "tick $($script:step) step='$((Get-El 'CurrentStep').Text)' summary='$((Get-El 'Summary').Text)'"
         try {
             switch ($script:step) {
-                0 { Save-Shot $script:w "1-programmi" }
+                0 {
+                    $hwnd = (New-Object System.Windows.Interop.WindowInteropHelper $script:w).Handle
+                    Write-Trace "finestra visibile: $([WbsConsoleWindow]::IsWindowVisible($hwnd))"
+                    Save-Shot $script:w "1-programmi"
+                }
                 1 { (Get-El "AppSearch").Text = "java" }
                 2 { Save-Shot $script:w "2-ricerca-java"; (Get-El "AppSearch").Text = "" }
                 3 { Send-Click "AppNone"; Write-Trace "dopo Nessuno: $((Get-El 'Summary').Text)" }

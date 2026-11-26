@@ -163,7 +163,7 @@ On every start the script reads the real state of the PC:
 
 | File | Role |
 |------|------|
-| `setup.cmd` | Launcher — asks for administrator rights and starts `setup.ps1` |
+| `setup.cmd` | Launcher — asks for administrator rights and starts `setup.ps1` with its console hidden, so only the window shows (the console appears only for errors or the terminal menus) |
 | `setup.ps1` | Main script — loads `lib/`, opens the window (or the terminal menus) and runs the setup |
 | `lib/Engine.ps1` | Catalog, detection of active optimizations, optimizations, software, Office, Windows Update |
 | `lib/Gui.ps1`, `lib/Gui.xaml` | Graphical window (WPF) |

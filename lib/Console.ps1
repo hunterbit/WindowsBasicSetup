@@ -3,6 +3,30 @@
 #  Scelta di programmi e ottimizzazioni nella console e richiesta del nome del PC.
 # ============================================================
 
+# Mostra o nasconde la console e restituisce se prima era visibile. setup.cmd avvia PowerShell
+# nascosto per mostrare solo la finestra grafica: la console serve per i menu a terminale,
+# -Unattended e i messaggi d'errore.
+function Set-ConsoleWindow {
+    param([bool]$Visible)
+    if (-not ("WbsConsoleWindow" -as [type])) {
+        Add-Type -Namespace "" -Name WbsConsoleWindow -MemberDefinition @"
+[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+"@
+    }
+    $h = [WbsConsoleWindow]::GetConsoleWindow()
+    if ($h -eq [IntPtr]::Zero) { return $false }
+    $wasVisible = [WbsConsoleWindow]::IsWindowVisible($h)
+    $cmd = 0                       # SW_HIDE
+    if ($Visible) { $cmd = 5 }     # SW_SHOW
+    # Due volte: in un processo avviato nascosto Windows ignora la prima ShowWindow del processo
+    # e applica lo stato di avvio (SW_HIDE). Vale per qualsiasi finestra, anche quella della GUI.
+    [void][WbsConsoleWindow]::ShowWindow($h, $cmd)
+    [void][WbsConsoleWindow]::ShowWindow($h, $cmd)
+    return $wasVisible
+}
+
 # Restituisce il nuovo nome del PC: quello di config.json o, se vuoto e $Ask, chiesto a terminale.
 # Stringa vuota = non rinominare.
 function Get-NewComputerName {
