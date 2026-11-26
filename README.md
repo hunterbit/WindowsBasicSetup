@@ -55,8 +55,8 @@ Available but not ticked by default:
 ### Programs
 
 - 🍫 **Chocolatey** — installed only if at least one package is selected, then used to deploy the selected programs. Failed packages are listed at the end
-  - Ticked by default: Google Chrome, Firefox, VLC, K-Lite Codec Pack Mega, HWiNFO, 7-Zip, Everything, TeraCopy, Adobe Reader, Notepad++, RustDesk
-  - Available: Java 8 JRE (Eclipse Temurin), Java 8 JRE (Oracle — Oracle's license applies to commercial use), LibreOffice, Thunderbird, SumatraPDF, Greenshot, KeePassXC, AnyDesk, Supremo (official portable executable, saved on the Public Desktop), MikroTik WinBox, PuTTY, WinSCP, Advanced IP Scanner, Wireshark, Sysinternals Suite, PowerShell 7, CrystalDiskInfo, TreeSize Free, PowerToys, VS Code, Git
+  - Ticked by default: Google Chrome, Firefox, VLC, K-Lite Codec Pack Mega, HWiNFO, 7-Zip, Everything, TeraCopy, Adobe Reader, Notepad++, RustDesk, Visual C++ Redistributable (all versions)
+  - Available: Java 8 JRE (Eclipse Temurin), Java 8 JRE (Oracle — Oracle's license applies to commercial use), Java 21 JRE and Java 17 JRE (Eclipse Temurin), LibreOffice, Thunderbird, SumatraPDF, Greenshot, KeePassXC, AnyDesk, Supremo (official portable executable, saved on the Public Desktop), MikroTik WinBox, PuTTY, WinSCP, WireGuard, Advanced IP Scanner, Angry IP Scanner, Wireshark, Sysinternals Suite, PowerShell 7, CrystalDiskInfo, CrystalDiskMark, CPU-Z, GPU-Z, HWMonitor, OCCT, Snappy Driver Installer Origin, TreeSize Free, PowerToys, VS Code, Git
 - 📦 **Office 2024** — downloads and runs the official Microsoft installer (Italian, x64 by default). A valid license is required to activate it
 
 ---
