@@ -71,7 +71,7 @@ Available but not ticked by default:
 
 ## Usage
 
-1. Download `setup.cmd`, `setup.ps1` and `config.json` and place them in the **same folder**
+1. Download the whole folder (`setup.cmd`, `setup.ps1`, `config.json` and the `lib` folder) and keep the files together
 2. Double-click `setup.cmd`
 3. Accept the UAC prompt
 4. Pick the programs to install and press Enter, then pick the optimizations to apply and press Enter
@@ -149,8 +149,11 @@ On every start the script reads the real state of the PC:
 | File | Role |
 |------|------|
 | `setup.cmd` | Launcher — asks for administrator rights and starts `setup.ps1` |
-| `setup.ps1` | Main script — selection menus, optimizations, software, Office, Windows Update |
+| `setup.ps1` | Main script — loads `lib/`, shows the menus and runs the setup |
+| `lib/Engine.ps1` | Catalog, detection of active optimizations, optimizations, software, Office, Windows Update |
+| `lib/Console.ps1` | Selection menus in the terminal |
 | `config.json` | Catalog of programs and optimizations with their default selection |
+| `tests/` | Pester tests for the engine (they do not change the system) |
 
 ---
 
