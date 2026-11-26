@@ -55,23 +55,24 @@ try {
 $setupItems  = @($catalog.Items)
 $setupTweaks = @($catalog.Tweaks)
 
-# Stato reale delle ottimizzazioni: quelle gia' attive vengono spuntate e segnalate nel menu.
-# Il segno in HKLM:\SOFTWARE\WindowsBasicSetup indica che lo script e' gia' stato eseguito su questo PC.
+# Il segno in HKLM:\SOFTWARE\WindowsBasicSetup indica che lo script e' gia' stato eseguito su questo PC
 $alreadyConfigured = Test-Path -LiteralPath $SetupMarkerKey
-Write-Host "Verifica delle impostazioni gia' attive sul sistema..." -ForegroundColor Cyan
-Update-TweakState -Tweaks $setupTweaks -StateTable $TweakState -AlreadyConfigured $alreadyConfigured
-$setupTweaks = Select-SelectedFirst -Items $setupTweaks
-
 $menuShown = [bool]($catalog.Interactive -and -not $Unattended)
 
-# Finestra grafica: scelta, esecuzione e riepilogo avvengono li'. Se non si apre, si prosegue con il terminale.
+# Finestra grafica: verifica dello stato (con barra di avanzamento), scelta, esecuzione e riepilogo
+# avvengono li'. Se non si apre, si prosegue con il terminale.
 if ($menuShown -and -not $Console) {
     . (Join-Path $PSScriptRoot "lib\Gui.ps1")
-    if (Show-SetupGui -Items $setupItems -Tweaks $setupTweaks) { exit }
+    if (Show-SetupGui -Items $setupItems -Tweaks $setupTweaks -AlreadyConfigured $alreadyConfigured) { exit }
     Write-Host "Uso il menu a terminale." -ForegroundColor Yellow
 }
 # Da qui si lavora nel terminale (menu, -Unattended o finestra non disponibile): la console deve vedersi
 [void](Set-ConsoleWindow $true)
+
+# Stato reale delle ottimizzazioni: quelle gia' attive vengono spuntate e segnalate nel menu
+Write-Host "Verifica delle impostazioni gia' attive sul sistema..." -ForegroundColor Cyan
+Update-TweakState -Tweaks $setupTweaks -StateTable $TweakState -AlreadyConfigured $alreadyConfigured
+$setupTweaks = Select-SelectedFirst -Items $setupTweaks
 if ($menuShown) {
     if ($setupItems.Count -gt 0) {
         Select-SetupItems -Items $setupItems

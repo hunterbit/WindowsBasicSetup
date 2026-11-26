@@ -266,10 +266,12 @@ $TelemetryTasks = @(
     @("\Microsoft\Windows\Feedback\Siuf\", "DmClientOnScenarioDownload")
 )
 
-# Le attivita' dell'elenco presenti su questo PC (variano tra versioni di Windows)
+# Le attivita' dell'elenco presenti su questo PC (variano tra versioni di Windows).
+# Una sola lettura di tutte le attivita': chiederle una per una costa circa 3 secondi ciascuna.
 function Get-TelemetryTasks {
+    $all = @(Get-ScheduledTask -ErrorAction SilentlyContinue)
     foreach ($t in $TelemetryTasks) {
-        Get-ScheduledTask -TaskPath $t[0] -TaskName $t[1] -ErrorAction SilentlyContinue
+        $all | Where-Object { $_.TaskPath -eq $t[0] -and $_.TaskName -eq $t[1] }
     }
 }
 

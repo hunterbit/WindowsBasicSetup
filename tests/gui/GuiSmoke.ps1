@@ -13,7 +13,6 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 $catalog = Get-SetupCatalog -Path (Join-Path $Repo "config.json")
 $items  = @($catalog.Items)
 $tweaks = @($catalog.Tweaks)
-Update-TweakState -Tweaks $tweaks -StateTable $TweakState -AlreadyConfigured $true
 
 $script:trace   = Join-Path $Out "trace.txt"
 $script:autoYes = Join-Path $PSScriptRoot "AutoYes.ps1"
@@ -41,9 +40,12 @@ $handler = [System.Windows.RoutedEventHandler]{
     param($s, $e)
     $script:w = $s
     $script:w.Left = -4000; $script:w.Top = 0
+    Save-Shot $script:w "0-caricamento"
     $script:t = New-Object System.Windows.Threading.DispatcherTimer
     $script:t.Interval = [TimeSpan]::FromMilliseconds(700)
     $script:t.Add_Tick({
+        # Aspetta la fine della verifica iniziale dello stato
+        if ((Get-El "LoadView").Visibility -eq "Visible") { Write-Trace "caricamento: $((Get-El 'LoadStep').Text) $((Get-El 'LoadProgress').Value)/$((Get-El 'LoadProgress').Maximum)"; return }
         Write-Trace "tick $($script:step) step='$((Get-El 'CurrentStep').Text)' summary='$((Get-El 'Summary').Text)'"
         try {
             switch ($script:step) {
@@ -82,6 +84,6 @@ $handler = [System.Windows.RoutedEventHandler]{
 }
 [System.Windows.EventManager]::RegisterClassHandler([System.Windows.Window], [System.Windows.FrameworkElement]::LoadedEvent, $handler)
 
-$r = Show-SetupGui -Items $items -Tweaks $tweaks -EnginePath (Join-Path $PSScriptRoot "FakeEngine.ps1")
+$r = Show-SetupGui -Items $items -Tweaks $tweaks -AlreadyConfigured $true -EnginePath (Join-Path $PSScriptRoot "FakeEngine.ps1")
 Write-Trace "Show-SetupGui = $r"
 Get-Content -LiteralPath $script:trace

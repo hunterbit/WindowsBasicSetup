@@ -86,8 +86,15 @@
       </StackPanel>
     </Border>
 
+    <!-- Verifica iniziale dello stato del PC -->
+    <StackPanel x:Name="LoadView" Grid.Row="1" Width="460" VerticalAlignment="Center" HorizontalAlignment="Center">
+      <TextBlock Text="Verifica delle impostazioni del PC…" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+      <ProgressBar x:Name="LoadProgress" Height="8" Margin="0,14,0,8" Foreground="{StaticResource Accent}"/>
+      <TextBlock x:Name="LoadStep" Foreground="#606060" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+    </StackPanel>
+
     <!-- Scelta -->
-    <TabControl x:Name="SelectView" Grid.Row="1" Margin="16,12,16,0" Padding="0" BorderBrush="#E0E0E0">
+    <TabControl x:Name="SelectView" Grid.Row="1" Margin="16,12,16,0" Padding="0" BorderBrush="#E0E0E0" Visibility="Collapsed">
       <TabItem Header="  Programmi  ">
         <DockPanel Background="White">
           <DockPanel DockPanel.Dock="Top" Margin="12,10">
@@ -166,7 +173,7 @@
 
     <!-- Barra inferiore -->
     <DockPanel Grid.Row="2" Margin="16,12,16,14">
-      <Button x:Name="StartButton" DockPanel.Dock="Right" Content="Avvia" Style="{StaticResource AccentButton}"/>
+      <Button x:Name="StartButton" DockPanel.Dock="Right" Content="Avvia" Style="{StaticResource AccentButton}" IsEnabled="False"/>
       <Button x:Name="CloseButton" DockPanel.Dock="Right" Content="Chiudi" Style="{StaticResource AccentButton}" Visibility="Collapsed"/>
       <TextBlock x:Name="Summary" VerticalAlignment="Center" Foreground="#404040" TextWrapping="Wrap" Margin="0,0,16,0"/>
     </DockPanel>

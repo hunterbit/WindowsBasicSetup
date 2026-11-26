@@ -16,7 +16,11 @@ public class WbsSetupRow : INotifyPropertyChanged {
     public int Index { get; set; }
     public string Label { get; set; }
     public string Category { get; set; }
-    public bool IsActive { get; set; }
+    private bool isActive;
+    public bool IsActive {
+        get { return isActive; }
+        set { if (isActive != value) { isActive = value; Notify("IsActive"); Notify("State"); } }
+    }
     private bool selected;
     public bool Selected {
         get { return selected; }
@@ -69,10 +73,11 @@ function New-WbsView {
     return ,$view
 }
 
-# Avvia Invoke-SetupPlan in un runspace separato. I messaggi arrivano nella coda restituita come
-# coppie (livello, testo); alla fine arriva ("Done", risultato) oppure ("Fatal", messaggio d'errore).
-function Start-SetupRun {
-    param([string]$EnginePath, $Plan, [object[]]$Items)
+# Esegue $Script in un runspace separato con il motore caricato, cosi' la finestra resta reattiva.
+# $Script riceve la coda e poi $Arguments; Write-SetupLog vi manda (livello, testo) e lo script
+# chiude con ("Done", risultato) oppure ("Fatal", messaggio d'errore).
+function Start-EngineJob {
+    param([string]$EnginePath, [scriptblock]$Script, [object[]]$Arguments)
 
     $queue = New-Object 'System.Collections.Concurrent.ConcurrentQueue[object]'
     $iss = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
@@ -82,27 +87,38 @@ function Start-SetupRun {
     $ps = [powershell]::Create()
     $ps.Runspace = $rs
     [void]$ps.AddScript({
-        param($EnginePath, $Plan, $Items, $Queue)
+        param($EnginePath, $Script, $Queue, $Arguments)
         # Write-SetupLog del motore manda qui ogni messaggio invece che alla console
         $SetupLogHandler = { param($Level, $Message) $Queue.Enqueue(@($Level, $Message)) }
         try {
             . $EnginePath
-            $result = Invoke-SetupPlan -Plan $Plan -Items $Items
+            $result = & ([scriptblock]::Create($Script)) @Arguments
             $Queue.Enqueue(@("Done", $result))
         } catch {
             $Queue.Enqueue(@("Fatal", $_.Exception.Message))
         }
     }.ToString())
-    [void]$ps.AddArgument($EnginePath).AddArgument($Plan).AddArgument($Items).AddArgument($queue)
+    # Lo script passa come testo: uno scriptblock resta legato al runspace in cui e' stato creato
+    [void]$ps.AddArgument($EnginePath).AddArgument($Script.ToString()).AddArgument($queue).AddArgument($Arguments)
     $handle = $ps.BeginInvoke()
     return [pscustomobject]@{ PowerShell = $ps; Handle = $handle; Queue = $queue }
 }
 
-# Mostra la finestra: scelta per categoria, conferma, esecuzione con avanzamento e riepilogo.
+# Chiude il runspace di Start-EngineJob dopo il messaggio finale
+function Stop-EngineJob {
+    param($Job)
+    try { [void]$Job.PowerShell.EndInvoke($Job.Handle) } catch {}
+    $Job.PowerShell.Runspace.Dispose()
+    $Job.PowerShell.Dispose()
+}
+
+# Mostra la finestra: verifica dello stato del PC con barra di avanzamento, scelta per categoria,
+# conferma, esecuzione con avanzamento e riepilogo. $AlreadyConfigured come in Update-TweakState.
 # Restituisce $false se la finestra non si puo' aprire (il chiamante passa al menu a terminale).
 # I gestori degli eventi usano le variabili locali: girano dentro ShowDialog, quindi le vedono.
 function Show-SetupGui {
-    param([object[]]$Items, [object[]]$Tweaks, [string]$EnginePath = (Join-Path $PSScriptRoot "Engine.ps1"))
+    param([object[]]$Items, [object[]]$Tweaks, [bool]$AlreadyConfigured,
+          [string]$EnginePath = (Join-Path $PSScriptRoot "Engine.ps1"))
 
     try {
         Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
@@ -115,7 +131,7 @@ function Show-SetupGui {
     }
 
     $ui = @{}
-    foreach ($n in @("SysInfo", "SelectView", "RunView", "AppList", "TweakList", "AppSearch", "TweakSearch",
+    foreach ($n in @("SysInfo", "LoadView", "LoadProgress", "LoadStep", "SelectView", "RunView", "AppList", "TweakList", "AppSearch", "TweakSearch",
                      "AppAll", "AppNone", "TweakAll", "TweakNone", "PcName", "WallpaperUrl", "Owner",
                      "Organization", "CurrentStep", "Progress", "LogBox", "StartButton", "CloseButton", "Summary")) {
         $ui[$n] = $window.FindName($n)
@@ -155,7 +171,6 @@ function Show-SetupGui {
         if ($revert -gt 0) { $text += "  -  $revert da riportare ai valori di Windows" }
         $ui.Summary.Text = $text
     }
-    & $updateSummary
     $clickEvent = [System.Windows.Controls.Primitives.ButtonBase]::ClickEvent
     $ui.AppList.AddHandler($clickEvent, [System.Windows.RoutedEventHandler]{ & $updateSummary })
     $ui.TweakList.AddHandler($clickEvent, [System.Windows.RoutedEventHandler]{ & $updateSummary })
@@ -168,6 +183,50 @@ function Show-SetupGui {
     $ui.TweakAll.Add_Click({ foreach ($r in $tweakView) { $r.Selected = $true }; & $updateSummary })
     $ui.TweakNone.Add_Click({ foreach ($r in $tweakView) { $r.Selected = $false }; & $updateSummary })
 
+    # Verifica dello stato reale in un runspace separato: alcuni controlli sono lenti (.NET 3.5 puo'
+    # richiedere decine di secondi) e sul thread della finestra la bloccherebbero. Usa sempre il motore
+    # vero: i controlli leggono soltanto. Update-TweakState modifica direttamente le voci di $Tweaks.
+    $ui.LoadProgress.Maximum = [Math]::Max(1, @($Tweaks | Where-Object { $TweakState.ContainsKey($_.Id) }).Count)
+    $load = @{ Job = $null }
+    $loadTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $loadTimer.Interval = [TimeSpan]::FromMilliseconds(100)
+    $loadTimer.Add_Tick({
+        $msg = $null
+        while ($load.Job -and $load.Job.Queue.TryDequeue([ref]$msg)) {
+            if ($msg[0] -eq "Step") {
+                $ui.LoadStep.Text = $msg[1]
+                $ui.LoadProgress.Value += 1
+                continue
+            }
+            if ($msg[0] -ne "Done" -and $msg[0] -ne "Fatal") { continue }
+            $loadTimer.Stop()
+            Stop-EngineJob $load.Job
+            $load.Job = $null
+            foreach ($r in $tweakRows) {
+                $tw = $Tweaks[$r.Index]
+                $r.IsActive = ($tw.Active -eq $true)
+                $r.Selected = [bool]$tw.Selected
+            }
+            & $updateSummary
+            if ($msg[0] -eq "Fatal") { $ui.Summary.Text = "Stato del PC non verificato ($($msg[1])): le spunte seguono config.json." }
+            $ui.LoadView.Visibility   = "Collapsed"
+            $ui.SelectView.Visibility = "Visible"
+            $ui.StartButton.IsEnabled = $true
+        }
+    })
+    # Parte dopo il primo disegno, cosi' la finestra compare subito
+    $window.Add_ContentRendered({
+        $load.Job = Start-EngineJob -EnginePath (Join-Path $PSScriptRoot "Engine.ps1") -Arguments @($Tweaks, $AlreadyConfigured) -Script {
+            param($Tweaks, $AlreadyConfigured)
+            foreach ($t in $Tweaks) {
+                if (-not $TweakState.ContainsKey($t.Id)) { continue }
+                Write-SetupLog Step $t.Label
+                Update-TweakState -Tweaks @($t) -StateTable $TweakState -AlreadyConfigured $AlreadyConfigured
+            }
+        }
+        $loadTimer.Start()
+    })
+
     $state = @{ Running = $false; Run = $null; Steps = 0 }
     $timer = New-Object System.Windows.Threading.DispatcherTimer
     $timer.Interval = [TimeSpan]::FromMilliseconds(200)
@@ -177,9 +236,7 @@ function Show-SetupGui {
         param($Result, $Fatal)
         $timer.Stop()
         $state.Running = $false
-        try { [void]$state.Run.PowerShell.EndInvoke($state.Run.Handle) } catch {}
-        $state.Run.PowerShell.Runspace.Dispose()
-        $state.Run.PowerShell.Dispose()
+        Stop-EngineJob $state.Run
         $ui.Progress.Value = $ui.Progress.Maximum
         if ($Fatal) {
             $ui.CurrentStep.Text = "Setup interrotto da un errore."
@@ -276,7 +333,10 @@ function Show-SetupGui {
         $ui.Progress.Maximum = $total
         $ui.Summary.Text = "Setup in corso: non spegnere il PC e non chiudere la finestra."
         $state.Steps   = 0
-        $state.Run     = Start-SetupRun -EnginePath $EnginePath -Plan $plan -Items $Items
+        $state.Run     = Start-EngineJob -EnginePath $EnginePath -Arguments @($plan, $Items) -Script {
+            param($Plan, $Items)
+            Invoke-SetupPlan -Plan $Plan -Items $Items
+        }
         $state.Running = $true
         $timer.Start()
     })
