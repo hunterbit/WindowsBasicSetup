@@ -109,14 +109,16 @@ Se la GUI non si avvia (Server Core, sessione senza desktop) si passa automatica
 
 ## Fasi
 
-| # | Fase | Risultato verificabile |
-|---|---|---|
-| 1 | Separare il motore (`lib/Engine.ps1`, `lib/Tweaks.ps1`) + menu a terminale in `lib/Console.ps1` | `setup.ps1` fa esattamente quello che fa oggi; test Pester su `Get-SetupCatalog`, `Get-TweakPlan`, `Test-ComputerName` |
-| 2 | Campo `category` in `config.json` + nuovi programmi | Catalogo diviso per categorie; vecchi `config.json` ancora accettati |
-| 3 | `Get-InstalledApps` | Elenco dei programmi installati corretto su un PC di prova |
-| 4 | GUI: selezione (schede, categorie, ricerca, stati, campi extra) | La finestra produce lo stesso piano che produrrebbe il menu a terminale |
-| 5 | GUI: esecuzione in runspace, avanzamento, log, riepilogo | Setup completo su una macchina virtuale pulita senza che la finestra si blocchi |
-| 6 | README e CLAUDE.md aggiornati | Documentazione allineata |
+| # | Fase | Risultato verificabile | Stato |
+|---|---|---|---|
+| 1 | Separare il motore (`lib/Engine.ps1`, azioni in `$TweakActions`) + menu a terminale in `lib/Console.ps1` | `setup.ps1` fa esattamente quello che fa oggi; test Pester su `Get-SetupCatalog`, `Get-TweakPlan`, `Test-ComputerName` | ✅ fatta, da provare su VM |
+| 2 | Campo `category` in `config.json` + nuovi programmi | Catalogo diviso per categorie; vecchi `config.json` ancora accettati | ✅ fatta (Euro-Office rimandato: manca un link stabile e un'installazione silenziosa verificata) |
+| 3 | `Get-InstalledApps` | Elenco dei programmi installati corretto su un PC di prova | da fare |
+| 4 | GUI: selezione (schede, categorie, ricerca, stati, campi extra) | La finestra produce lo stesso piano che produrrebbe il menu a terminale | ✅ fatta, da provare su VM |
+| 5 | GUI: esecuzione in runspace, avanzamento, log, riepilogo | Setup completo su una macchina virtuale pulita senza che la finestra si blocchi | ✅ fatta con motore finto (`tests/gui/GuiSmoke.ps1`), da provare su VM con il motore vero |
+| 6 | README e CLAUDE.md aggiornati | Documentazione allineata | ✅ fatta |
+
+Differenze rispetto al progetto iniziale: niente `lib/Tweaks.ps1` separato (le azioni stanno in `$TweakActions` dentro `Engine.ps1`); niente casella "tutti" per singola categoria (Tutti / Nessuno agiscono sulle voci visibili, quindi basta cercare la categoria); nella schermata di esecuzione c'e' una barra unica con la voce corrente invece dell'elenco con un'icona per voce.
 
 Ogni fase si chiude con un commit; le fasi 1 e 5 si provano su una **macchina virtuale Windows 10 e Windows 11** (con checkpoint, così si torna allo stato pulito), mai sul PC di lavoro.
 

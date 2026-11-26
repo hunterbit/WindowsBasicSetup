@@ -1,0 +1,174 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WindowsBasicSetup" Width="960" Height="720" MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterScreen" FontFamily="Segoe UI" FontSize="13"
+        Background="#F3F3F3" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+  <Window.Resources>
+    <SolidColorBrush x:Key="Accent" Color="#0067C0"/>
+
+    <Style x:Key="AccentButton" TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource Accent}"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="22,7"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Background" Value="#1975C5"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="bd" Property="Background" Value="#A0A0A0"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="PlainButton" TargetType="Button">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="#D0D0D0"/>
+      <Setter Property="Padding" Value="12,4"/>
+      <Setter Property="Margin" Value="6,0,0,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+
+    <!-- Riga dell'elenco: casella + stato (gia' attiva / verra' ripristinata) -->
+    <DataTemplate x:Key="RowTemplate">
+      <StackPanel Orientation="Horizontal" Margin="22,3,0,3">
+        <CheckBox IsChecked="{Binding Selected, Mode=TwoWay}" VerticalContentAlignment="Center">
+          <TextBlock Text="{Binding Label}" Margin="4,0,0,0"/>
+        </CheckBox>
+        <TextBlock x:Name="state" Text="{Binding State}" Margin="12,0,0,0" FontSize="12" Foreground="#107C10" VerticalAlignment="Center"/>
+      </StackPanel>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Selected}" Value="False">
+          <Setter TargetName="state" Property="Foreground" Value="#C25E00"/>
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- Intestazione di categoria richiudibile -->
+    <Style x:Key="GroupStyle" TargetType="GroupItem">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="GroupItem">
+            <Expander IsExpanded="True" Margin="0,2,0,4">
+              <Expander.Header>
+                <TextBlock FontWeight="SemiBold" FontSize="14">
+                  <Run Text="{Binding Name, Mode=OneWay}"/>
+                  <Run Text="{Binding ItemCount, Mode=OneWay, StringFormat=({0})}" Foreground="#707070" FontWeight="Normal"/>
+                </TextBlock>
+              </Expander.Header>
+              <ItemsPresenter/>
+            </Expander>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Intestazione -->
+    <Border Grid.Row="0" Background="White" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="20,14">
+      <StackPanel>
+        <TextBlock Text="WindowsBasicSetup" FontSize="20" FontWeight="SemiBold"/>
+        <TextBlock x:Name="SysInfo" Foreground="#606060" Margin="0,2,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Scelta -->
+    <TabControl x:Name="SelectView" Grid.Row="1" Margin="16,12,16,0" Padding="0" BorderBrush="#E0E0E0">
+      <TabItem Header="  Programmi  ">
+        <DockPanel Background="White">
+          <DockPanel DockPanel.Dock="Top" Margin="12,10">
+            <TextBlock Text="Cerca:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <Button x:Name="AppAll" Content="Tutti" Style="{StaticResource PlainButton}"/>
+              <Button x:Name="AppNone" Content="Nessuno" Style="{StaticResource PlainButton}"/>
+            </StackPanel>
+            <TextBox x:Name="AppSearch" Padding="4,3"/>
+          </DockPanel>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4,0,12,8">
+            <ItemsControl x:Name="AppList" ItemTemplate="{StaticResource RowTemplate}">
+              <ItemsControl.GroupStyle>
+                <GroupStyle ContainerStyle="{StaticResource GroupStyle}"/>
+              </ItemsControl.GroupStyle>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </TabItem>
+      <TabItem Header="  Ottimizzazioni  ">
+        <DockPanel Background="White">
+          <DockPanel DockPanel.Dock="Top" Margin="12,10">
+            <TextBlock Text="Cerca:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <Button x:Name="TweakAll" Content="Tutte" Style="{StaticResource PlainButton}"/>
+              <Button x:Name="TweakNone" Content="Nessuna" Style="{StaticResource PlainButton}"/>
+            </StackPanel>
+            <TextBox x:Name="TweakSearch" Padding="4,3"/>
+          </DockPanel>
+          <Expander DockPanel.Dock="Bottom" Header="Opzioni (nome PC, proprietario, sfondo)" Margin="12,0,12,10" Padding="0,8,0,0">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Nuovo nome PC" VerticalAlignment="Center" Margin="0,0,8,6"/>
+              <TextBox   Grid.Row="0" Grid.Column="1" x:Name="PcName" MaxLength="15" Padding="4,3" Margin="0,0,16,6"
+                         ToolTip="Massimo 15 caratteri tra lettere, cifre e trattino, non solo cifre"/>
+              <TextBlock Grid.Row="0" Grid.Column="2" Text="URL sfondo" VerticalAlignment="Center" Margin="0,0,8,6"/>
+              <TextBox   Grid.Row="0" Grid.Column="3" x:Name="WallpaperUrl" Padding="4,3" Margin="0,0,0,6"/>
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Proprietario" VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <TextBox   Grid.Row="1" Grid.Column="1" x:Name="Owner" Padding="4,3" Margin="0,0,16,0"/>
+              <TextBlock Grid.Row="1" Grid.Column="2" Text="Organizzazione" VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <TextBox   Grid.Row="1" Grid.Column="3" x:Name="Organization" Padding="4,3"/>
+            </Grid>
+          </Expander>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4,0,12,8">
+            <ItemsControl x:Name="TweakList" ItemTemplate="{StaticResource RowTemplate}">
+              <ItemsControl.GroupStyle>
+                <GroupStyle ContainerStyle="{StaticResource GroupStyle}"/>
+              </ItemsControl.GroupStyle>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </TabItem>
+    </TabControl>
+
+    <!-- Esecuzione -->
+    <Grid x:Name="RunView" Grid.Row="1" Margin="16,12,16,0" Visibility="Collapsed">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <TextBlock x:Name="CurrentStep" Grid.Row="0" FontSize="14" FontWeight="SemiBold" Text="Avvio..." TextTrimming="CharacterEllipsis"/>
+      <ProgressBar x:Name="Progress" Grid.Row="1" Height="8" Margin="0,8,0,10" Foreground="{StaticResource Accent}"/>
+      <TextBox x:Name="LogBox" Grid.Row="2" IsReadOnly="True" FontFamily="Consolas" FontSize="12"
+               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap" Padding="6"/>
+    </Grid>
+
+    <!-- Barra inferiore -->
+    <DockPanel Grid.Row="2" Margin="16,12,16,14">
+      <Button x:Name="StartButton" DockPanel.Dock="Right" Content="Avvia" Style="{StaticResource AccentButton}"/>
+      <Button x:Name="CloseButton" DockPanel.Dock="Right" Content="Chiudi" Style="{StaticResource AccentButton}" Visibility="Collapsed"/>
+      <TextBlock x:Name="Summary" VerticalAlignment="Center" Foreground="#404040" TextWrapping="Wrap" Margin="0,0,16,0"/>
+    </DockPanel>
+  </Grid>
+</Window>

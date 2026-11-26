@@ -2,10 +2,13 @@
 #  SETUP AUTOMATICO - setup.ps1
 # ============================================================
 
+#  (nessuno)    : finestra grafica; se non si apre, menu a terminale
+#  -Console     : menu a terminale al posto della finestra
 #  -Unattended  : salta i menu e usa le voci con "selected": true
 #  -ConfigPath  : percorso del catalogo programmi/ottimizzazioni (default: config.json accanto allo script)
 param(
     [switch]$Unattended,
+    [switch]$Console,
     [string]$ConfigPath
 )
 
@@ -15,6 +18,7 @@ if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot "config.json" }
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $elevArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -ConfigPath `"$ConfigPath`""
     if ($Unattended) { $elevArgs += " -Unattended" }
+    if ($Console)    { $elevArgs += " -Console" }
     Start-Process powershell -ArgumentList $elevArgs -Verb RunAs
     Exit
 }
@@ -58,6 +62,14 @@ Update-TweakState -Tweaks $setupTweaks -StateTable $TweakState -AlreadyConfigure
 $setupTweaks = Select-SelectedFirst -Items $setupTweaks
 
 $menuShown = [bool]($catalog.Interactive -and -not $Unattended)
+
+# Finestra grafica: scelta, esecuzione e riepilogo avvengono li'. Se non si apre, si prosegue con il terminale.
+if ($menuShown -and -not $Console) {
+    . (Join-Path $PSScriptRoot "lib\Gui.ps1")
+    if (Show-SetupGui -Items $setupItems -Tweaks $setupTweaks) { exit }
+    Write-Host "Uso il menu a terminale." -ForegroundColor Yellow
+}
+
 if ($menuShown) {
     if ($setupItems.Count -gt 0) {
         Select-SetupItems -Items $setupItems

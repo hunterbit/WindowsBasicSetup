@@ -7,9 +7,11 @@
 
 # Messaggio del setup. In console lo colora per livello; la GUI imposta $SetupLogHandler
 # (scriptblock con parametri Level, Message) per riceverlo al posto della console.
+# Il livello Step segna l'inizio di una voce del piano: serve solo alla barra di avanzamento della GUI.
 function Write-SetupLog {
-    param([ValidateSet("Info", "Ok", "Warn", "Error", "Detail")][string]$Level, [string]$Message)
+    param([ValidateSet("Info", "Ok", "Warn", "Error", "Detail", "Step")][string]$Level, [string]$Message)
     if ($SetupLogHandler) { & $SetupLogHandler $Level $Message; return }
+    if ($Level -eq "Step") { return }
     $colors = @{ Info = "Cyan"; Ok = "Green"; Warn = "Yellow"; Error = "Red"; Detail = "Gray" }
     Write-Host $Message -ForegroundColor $colors[$Level]
 }
@@ -76,6 +78,8 @@ function Get-SetupCatalog {
             if ($app.name) { $name = $app.name }
             $selected = $true
             if ($null -ne $app.selected) { $selected = [bool]$app.selected }
+            $category = "Altro"
+            if ($app.category) { $category = [string]$app.category }
             if ($app.url) {
                 # Programma non presente su Chocolatey: scaricato dal sito del produttore sul Desktop pubblico
                 $url = [string]$app.url
@@ -84,9 +88,11 @@ function Get-SetupCatalog {
                 if ($app.fileName) { $fileName = [string]$app.fileName }
                 if (-not $fileName) { throw "config.json: per '$($app.id)' indica 'fileName' (nome del file da salvare)." }
                 $options = [pscustomobject]@{ Url = $url; FileName = $fileName }
-                $items += [pscustomobject]@{ Kind = "download"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Active = $null; Order = $order++; Options = $options }
+                $items += [pscustomobject]@{ Kind = "download"; Id = [string]$app.id; Label = [string]$name; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
             } else {
-                $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Selected = $selected; Active = $null; Order = $order++; Options = $null }
+                # Le impronte (checksum) dei pacchetti si verificano sempre, salvo eccezione esplicita per il singolo programma
+                $options = [pscustomobject]@{ IgnoreChecksums = ($app.ignoreChecksums -eq $true) }
+                $items += [pscustomobject]@{ Kind = "choco"; Id = [string]$app.id; Label = [string]$name; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
             }
         }
     }
@@ -101,7 +107,9 @@ function Get-SetupCatalog {
         $selected = $true
         if ($null -ne $config.office.selected) { $selected = [bool]$config.office.selected }
         $label = "{0} ({1}, {2})" -f $name, $office.Language, $office.Platform
-        $items += [pscustomobject]@{ Kind = "office"; Id = $office.ProductId; Label = $label; Selected = $selected; Active = $null; Order = $order++; Options = $office }
+        $category = "Altro"
+        if ($config.office.category) { $category = [string]$config.office.category }
+        $items += [pscustomobject]@{ Kind = "office"; Id = $office.ProductId; Label = $label; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $office }
     }
 
     $tweaks = @()
@@ -138,7 +146,9 @@ function Get-SetupCatalog {
                 if ($tweak.computerName) { $newName = ([string]$tweak.computerName).Trim() }
                 $options = [pscustomobject]@{ ComputerName = $newName }
             }
-            $tweaks += [pscustomobject]@{ Kind = "tweak"; Id = $id; Label = [string]$name; Selected = $selected; Active = $null; Order = $order++; Options = $options }
+            $category = "Altro"
+            if ($tweak.category) { $category = [string]$tweak.category }
+            $tweaks += [pscustomobject]@{ Kind = "tweak"; Id = $id; Label = [string]$name; Category = $category; Selected = $selected; Active = $null; Order = $order++; Options = $options }
         }
     }
 
@@ -522,8 +532,14 @@ function Install-ChocoApps {
 
     $failed = @()
     foreach ($app in $Apps) {
+        Write-SetupLog Step $app.Label
         Write-SetupLog Info "Installazione $($app.Label)..."
-        choco install $app.Id --ignore-checksums -y | ForEach-Object { Write-SetupLog Detail "$_" }
+        $chocoArgs = @("install", $app.Id, "-y")
+        if ($app.Options -and $app.Options.IgnoreChecksums) {
+            Write-SetupLog Warn "  Verifica dell'impronta disattivata per $($app.Label) (ignoreChecksums in config.json)."
+            $chocoArgs += "--ignore-checksums"
+        }
+        choco @chocoArgs | ForEach-Object { Write-SetupLog Detail "$_" }
         # 1641 e 3010 = installato, riavvio richiesto
         if (@(0, 1641, 3010) -notcontains $LASTEXITCODE) { $failed += $app }
     }
@@ -934,7 +950,8 @@ $TweakActions = [ordered]@{
             Write-SetupLog Info "Ricerca e installazione aggiornamenti Windows..."
             # -IgnoreReboot: non riavvia mai, il riavvio resta a cura dell'utente.
             # -NotCategory Upgrades: esclude i passaggi di versione (es. Windows 10 -> 11).
-            Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot -NotCategory "Upgrades" -Verbose
+            # 4>&1: i messaggi Verbose finiscono nel log (anche nella GUI, che non ha una console)
+            Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot -NotCategory "Upgrades" -Verbose 4>&1
             if (Get-WURebootStatus -Silent) { $Run.RebootNeeded = $true }
             Write-SetupLog Ok "Aggiornamenti installati. Alcuni compaiono solo dopo il riavvio: in quel caso rilancia Windows Update."
         } catch {
@@ -966,11 +983,19 @@ $TweakActions = [ordered]@{
 # Ottimizzazioni eseguite dopo l'installazione dei programmi (lente o da fare per ultime)
 $LateTweaks = @("enableNetFx3", "windowsUpdate", "cleanupTemp")
 
+# Inoltra al log l'output dei comandi (powercfg, Chocolatey, Windows Update...): senza, dentro
+# Invoke-SetupPlan finirebbe nel valore restituito invece che a schermo
+function Write-SetupOutput {
+    param([Parameter(ValueFromPipeline = $true)]$InputObject)
+    process { $InputObject | Out-String -Stream | Where-Object { $_.Trim() } | ForEach-Object { Write-SetupLog Detail $_ } }
+}
+
 # Esegue l'azione di una ottimizzazione; un errore viene segnalato e il setup prosegue
 function Invoke-TweakAction {
     param($Item)
+    Write-SetupLog Step $Item.Label
     try {
-        & $TweakActions[$Item.Id] $Item
+        & $TweakActions[$Item.Id] $Item | Write-SetupOutput
     } catch {
         Write-SetupLog Warn "$($Item.Label): non completata ($($_.Exception.Message))"
     }
@@ -992,9 +1017,10 @@ function Invoke-SetupPlan {
 
     # ---- RIPRISTINO AI VALORI DI WINDOWS (voci attive a cui e' stata tolta la spunta) ----
     foreach ($tw in $Plan.Revert) {
+        Write-SetupLog Step $tw.Label
         Write-SetupLog Info "Ripristino ai valori di Windows: $($tw.Label)..."
         try {
-            & $TweakState[$tw.Id].Revert
+            & $TweakState[$tw.Id].Revert | Write-SetupOutput
             Write-SetupLog Ok "Ripristinato: $($tw.Label)."
         } catch {
             Write-SetupLog Warn "Ripristino non riuscito ($($tw.Label)): $($_.Exception.Message)"
@@ -1019,7 +1045,7 @@ function Invoke-SetupPlan {
         Write-SetupLog Info "Installazione Chocolatey..."
         Set-ExecutionPolicy Bypass -Scope Process -Force
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')) | Write-SetupOutput
         Write-SetupLog Info "Attesa completamento Chocolatey..."
         Start-Sleep -Seconds 20
 
@@ -1039,6 +1065,7 @@ function Invoke-SetupPlan {
     # ---- PROGRAMMI SCARICATI DAL SITO DEL PRODUTTORE ----
     foreach ($app in @($Items | Where-Object { $_.Kind -eq "download" -and $_.Selected })) {
         $dest = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) $app.Options.FileName
+        Write-SetupLog Step $app.Label
         Write-SetupLog Info "Download $($app.Label)..."
         try {
             Invoke-WebRequest -Uri $app.Options.Url -OutFile $dest -UseBasicParsing -ErrorAction Stop
@@ -1051,6 +1078,7 @@ function Invoke-SetupPlan {
     # ---- OFFICE ----
     $officeItem = $Items | Where-Object { $_.Kind -eq "office" -and $_.Selected } | Select-Object -First 1
     if ($officeItem) {
+        Write-SetupLog Step $officeItem.Label
         Write-SetupLog Info "Download $($officeItem.Label)..."
         $office     = $officeItem.Options
         $officeUrl  = "https://c2rsetup.officeapps.live.com/c2r/download.aspx?ProductreleaseID=$($office.ProductId)&platform=$($office.Platform)&language=$($office.Language)&version=O16GA"

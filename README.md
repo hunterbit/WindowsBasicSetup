@@ -1,13 +1,14 @@
 # WindowsBasicSetup
  Windows Auto Setup Script
 
-An automation script (`setup.cmd` + `setup.ps1` + `config.json`) for quick Windows configuration after a fresh install. At startup it lists the programs and the optimizations in the terminal: tick what you want, confirm, and it does the rest. It never reboots the PC on its own — if a reboot is needed, it tells you at the end.
+An automation script (`setup.cmd` + `setup.ps1` + `config.json`) for quick Windows configuration after a fresh install. At startup it opens a window with the programs and the optimizations grouped by category: tick what you want, confirm, and it does the rest while showing progress and a log. It never reboots the PC on its own — if a reboot is needed, it tells you at the end.
 
 ---
 
 ## Features
 
-- ☑️ **Selection menus** — programs and optimizations come from `config.json` and are ticked in the terminal; nothing is changed before you confirm
+- 🪟 **Graphical window** — two tabs (Programs, Optimizations), entries grouped by category, search box, Select all / none, progress bar and full log while the setup runs. The terminal menus are still available with `-Console`, and are used automatically if the window cannot open
+- ☑️ **Nothing changes before you confirm** — programs and optimizations come from `config.json`; the window asks for confirmation and lists what will be restored
 - 🔁 **No automatic reboots** — Windows Update runs once; a pending reboot is only reported
 - 🔎 **Detects what is already applied** — when the script starts it checks Windows for every optimization that can be detected. Those already active are ticked and shown in green with "(gia' attiva)"; untick one and the script puts it back to the Windows default
 
@@ -54,7 +55,7 @@ Available but not ticked by default:
 
 ### Programs
 
-- 🍫 **Chocolatey** — installed only if at least one package is selected, then used to deploy the selected programs. Failed packages are listed at the end
+- 🍫 **Chocolatey** — installed only if at least one package is selected, then used to deploy the selected programs. Package checksums are always verified (see `ignoreChecksums` below). Failed packages are listed at the end
   - Ticked by default: Google Chrome, Firefox, VLC, K-Lite Codec Pack Mega, HWiNFO, 7-Zip, Everything, TeraCopy, Adobe Reader, Notepad++, RustDesk, Visual C++ Redistributable (all versions)
   - Available: Java 8 JRE (Eclipse Temurin), Java 8 JRE (Oracle — Oracle's license applies to commercial use), Java 21 JRE and Java 17 JRE (Eclipse Temurin), LibreOffice, Thunderbird, SumatraPDF, Greenshot, KeePassXC, AnyDesk, Supremo (official portable executable, saved on the Public Desktop), MikroTik WinBox, PuTTY, WinSCP, WireGuard, Advanced IP Scanner, Angry IP Scanner, Wireshark, Sysinternals Suite, PowerShell 7, CrystalDiskInfo, CrystalDiskMark, CPU-Z, GPU-Z, HWMonitor, OCCT, Snappy Driver Installer Origin, TreeSize Free, PowerToys, VS Code, Git
 - 📦 **Office 2024** — downloads and runs the official Microsoft installer (Italian, x64 by default). A valid license is required to activate it
@@ -74,11 +75,22 @@ Available but not ticked by default:
 1. Download the whole folder (`setup.cmd`, `setup.ps1`, `config.json` and the `lib` folder) and keep the files together
 2. Double-click `setup.cmd`
 3. Accept the UAC prompt
-4. Pick the programs to install and press Enter, then pick the optimizations to apply and press Enter
-5. If "Rename PC" is ticked and no name is set in `config.json`, type the new name
-6. Wait — at the end the script tells you whether a reboot is needed
+4. In the window, tick the programs and the optimizations (use **Cerca** to filter, **Tutti / Nessuno** act on the visible entries). New PC name, registered owner and wallpaper URL are in **Opzioni** at the bottom of the Optimizations tab
+5. Press **Avvia** and confirm
+6. Wait — the window shows progress and the log; at the end it tells you which programs failed and whether a reboot is needed. It cannot be closed while the setup runs
 
-### Using the menus
+Command-line switches for `setup.ps1`:
+
+| Switch | Effect |
+|---|---|
+| (none) | Graphical window; falls back to the terminal menus if it cannot open |
+| `-Console` | Terminal menus instead of the window |
+| `-Unattended` | No questions: applies everything with `"selected": true`, never restores |
+| `-ConfigPath <file>` | Use another catalog instead of `config.json` |
+
+### Using the terminal menus (`-Console`)
+
+Pick the programs and press Enter, then the optimizations and press Enter. If "Rename PC" is ticked and no name is set in `config.json`, type the new name.
 
 | Key | Action |
 |-----|--------|
@@ -116,10 +128,11 @@ On every start the script reads the real state of the PC:
 {
   "interactive": true,
   "apps": [
-    { "id": "googlechrome", "name": "Google Chrome", "selected": true }
+    { "id": "googlechrome", "category": "Browser", "name": "Google Chrome", "selected": true }
   ],
   "office": {
     "name": "Microsoft Office 2024 ProPlus",
+    "category": "Ufficio e PDF",
     "selected": true,
     "productId": "ProPlus2024Retail",
     "language": "it-it",
@@ -135,11 +148,13 @@ On every start the script reads the real state of the PC:
 ```
 
 - `apps[].id` — Chocolatey package name (required; search it on https://community.chocolatey.org/packages); `name` — label shown in the menu; `selected` — pre-ticked or not (default `true`)
+- `category` (apps, `office`, tweaks) — group shown in the window; entries without it go under "Altro". Categories appear in the order of their first entry in the file. The terminal menus ignore it
+- `ignoreChecksums: true` — only for a Chocolatey package whose checksum is known to be out of date: installs it without verifying the downloaded file. Leave it out otherwise
 - Programs that are not on Chocolatey: add `url` (official `https://` download link) to the entry. The file is saved on the Public Desktop, named after the URL or after `fileName` if given; `id` is then just a unique name. Example: `{ "id": "supremo", "name": "Supremo", "selected": false, "url": "https://www.nanosystems.it/public/download/Supremo.exe" }`
 - `office` — remove the whole block to drop Office from the menu
 - `tweaks[].id` — one of `restorePoint`, `removeBloatware`, `disableTelemetry`, `disableSuggestions`, `disableCopilot`, `disableOfficeTelemetry`, `disableTelemetryTasks`, `disableLocation`, `disableScoobe`, `edgeQuiet`, `taskbarEndTask`, `disableStickyKeys`, `disableMouseAccel`, `ultimatePerformance`, `cleanupTemp`, `removeOneDrive`, `copyMoveTo`, `showFileExtensions`, `classicContextMenu`, `disableWebSearch`, `securityHealthTray`, `taskbarWin11`, `darkTheme`, `wallpaper`, `powerPlan`, `disableFastStartup`, `disableHibernation`, `enableRdp`, `renameComputer`, `registeredOwner`, `enableNetFx3`, `disableUac`, `windowsUpdate`. An optimization missing from the list is not shown and not applied
-- Extra fields: `removeBloatware` → `packages` (Store package names, `*` wildcards allowed); `renameComputer` → `computerName` (empty = ask in the terminal); `wallpaper` → `url`; `registeredOwner` → `owner`, `organization`
-- Menu order — in both menus the entries ticked by default come first, then the others; each group keeps the order of `config.json`
+- Extra fields: `removeBloatware` → `packages` (Store package names, `*` wildcards allowed); `renameComputer` → `computerName` (empty = type it in Opzioni in the window, or at the prompt in the terminal); `wallpaper` → `url`; `registeredOwner` → `owner`, `organization`
+- Order — in the window entries keep the order of `config.json` inside their category; in the terminal menus the entries ticked by default come first, then the others
 - `interactive` — set to `false` to skip the menus and apply everything with `"selected": true`. Same effect as running `setup.ps1 -Unattended`
 
 ---
@@ -149,11 +164,12 @@ On every start the script reads the real state of the PC:
 | File | Role |
 |------|------|
 | `setup.cmd` | Launcher — asks for administrator rights and starts `setup.ps1` |
-| `setup.ps1` | Main script — loads `lib/`, shows the menus and runs the setup |
+| `setup.ps1` | Main script — loads `lib/`, opens the window (or the terminal menus) and runs the setup |
 | `lib/Engine.ps1` | Catalog, detection of active optimizations, optimizations, software, Office, Windows Update |
+| `lib/Gui.ps1`, `lib/Gui.xaml` | Graphical window (WPF) |
 | `lib/Console.ps1` | Selection menus in the terminal |
 | `config.json` | Catalog of programs and optimizations with their default selection |
-| `tests/` | Pester tests for the engine (they do not change the system) |
+| `tests/` | Pester tests for the engine and a smoke test of the window (`tests/gui`); none of them change the system |
 
 ---
 

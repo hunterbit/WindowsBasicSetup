@@ -27,6 +27,17 @@ Describe "Get-SetupCatalog" {
         $p = New-TestConfig '{ "tweaks": [ { "id": "nonEsiste" } ] }'
         { Get-SetupCatalog -Path $p } | Should Throw
     }
+    It "legge la categoria, con 'Altro' se manca" {
+        $p = New-TestConfig '{ "apps": [ { "id": "a", "category": "Browser" }, { "id": "b" } ], "tweaks": [ { "id": "darkTheme", "category": "Interfaccia" } ] }'
+        $c = Get-SetupCatalog -Path $p
+        ($c.Items | ForEach-Object { $_.Category }) -join "," | Should Be "Browser,Altro"
+        $c.Tweaks[0].Category | Should Be "Interfaccia"
+    }
+    It "verifica le impronte dei pacchetti salvo ignoreChecksums esplicito" {
+        $p = New-TestConfig '{ "apps": [ { "id": "a" }, { "id": "b", "ignoreChecksums": true } ] }'
+        ($c = Get-SetupCatalog -Path $p).Items[0].Options.IgnoreChecksums | Should Be $false
+        $c.Items[1].Options.IgnoreChecksums | Should Be $true
+    }
     It "rifiuta un download non https" {
         $p = New-TestConfig '{ "apps": [ { "id": "x", "url": "http://example.com/x.exe" } ] }'
         { Get-SetupCatalog -Path $p } | Should Throw
@@ -71,6 +82,20 @@ Describe "Test-ComputerName" {
     }
 }
 
+Describe "Install-ChocoApps" {
+    $script:SetupLogHandler = { param($Level, $Message) }
+    It "passa --ignore-checksums solo ai pacchetti che lo chiedono" {
+        $script:chocoCalls = New-Object System.Collections.ArrayList
+        function choco { [void]$script:chocoCalls.Add($args -join " "); $global:LASTEXITCODE = 0 }
+        $apps = @(
+            [pscustomobject]@{ Id = "a"; Label = "A"; Options = [pscustomobject]@{ IgnoreChecksums = $false } }
+            [pscustomobject]@{ Id = "b"; Label = "B"; Options = [pscustomobject]@{ IgnoreChecksums = $true } }
+        )
+        $null = Install-ChocoApps -Apps $apps
+        $script:chocoCalls -join "|" | Should Be "install a -y|install b -y --ignore-checksums"
+    }
+}
+
 Describe "Invoke-SetupPlan" {
     Mock Set-RegValue {}
 
@@ -109,5 +134,16 @@ Describe "Invoke-SetupPlan" {
         }
         $null = Invoke-SetupPlan -Plan $plan -Items @()
         $calls -join "," | Should Be "powerPlan"
+    }
+    It "l'output dei comandi va nel log, non nel risultato" {
+        $logged = New-Object System.Collections.ArrayList
+        $script:TweakActions = [ordered]@{ darkTheme = { param($Item) "rumore"; Get-Date } }
+        $script:SetupLogHandler = { param($Level, $Message) [void]$logged.Add("$Level $Message") }
+        $plan = [pscustomobject]@{ Apply = @([pscustomobject]@{ Id = "darkTheme"; Label = "x" }); Keep = @(); Revert = @() }
+        $r = Invoke-SetupPlan -Plan $plan -Items @()
+        @($r).Count | Should Be 1
+        $r.RebootNeeded | Should Be $false
+        @($logged | Where-Object { $_ -eq "Detail rumore" }).Count | Should Be 1
+        @($logged | Where-Object { $_ -eq "Step x" }).Count | Should Be 1
     }
 }
