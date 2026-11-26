@@ -43,7 +43,7 @@ Available but not ticked by default:
 - 📌 **Windows 11 taskbar** — aligned left, no Widgets, Task View or Chat buttons
 - 🌑 **Dark Theme**
 - 🎨 **Wallpaper & Lock Screen** — an image file picked with **Sfoglia…** in the window (or set in `config.json`), or an `https://` address
-- 🏷️ **PC info on the desktop (BGInfo)** — downloads BGInfo from Microsoft Sysinternals (used only if signed by Microsoft) and runs it at every sign-in for all users, writing PC name, IP and other details on the wallpaper. Fields, position and colours come from `bginfo.bgi` next to `setup.cmd` (create it once with BGInfo); without it BGInfo's default layout is used
+- 🏷️ **PC info on the desktop (BGInfo)** — downloads BGInfo from Microsoft Sysinternals (used only if signed by Microsoft) and runs it at every sign-in for all users, writing PC name, IP and other details on the wallpaper. Fields, position and colours come from `bginfo.bgi` next to `setup.cmd` (create it once with `tools\Crea-BGInfo.cmd`, instructions and a recommended layout in [docs/BGINFO.md](docs/BGINFO.md)); without it BGInfo's default layout is used. Installed in `Program Files`, writable only by administrators
 - 💤 **Disable hibernation** — removes `hiberfil.sys`
 - 🏎️ **Ultimate Performance** — creates and activates the Ultimate Performance power plan; for desktops that must run at full speed
 - 🖲️ **Mouse acceleration off** — 1:1 pointer movement (from the next sign-in)
@@ -171,6 +171,8 @@ On every start the script reads the real state of the PC:
 | `lib/Gui.ps1`, `lib/Gui.xaml` | Graphical window (WPF) |
 | `lib/Console.ps1` | Selection menus in the terminal |
 | `config.json` | Catalog of programs and optimizations with their default selection |
+| `bginfo.bgi` (optional) | BGInfo layout used by the BGInfo optimization |
+| `tools/Crea-BGInfo.cmd` | Opens BGInfo to create or edit `bginfo.bgi` (see `docs/BGINFO.md`) |
 | `tests/` | Pester tests for the engine and a smoke test of the window (`tests/gui`); none of them change the system |
 
 ---

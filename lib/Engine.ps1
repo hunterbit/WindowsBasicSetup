@@ -266,7 +266,9 @@ $SetupMarkerKey = "HKLM:\SOFTWARE\WindowsBasicSetup"
 $RegOffice      = "HKCU:\Software\Policies\Microsoft\office"
 $RegEdgePolicy  = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
 $RegRunMachine  = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-$BgInfoDir      = Join-Path $env:ProgramData "WindowsBasicSetup\BGInfo"
+# Program Files e non ProgramData: sotto ProgramData gli utenti normali possono creare file, e una DLL
+# messa accanto a BGInfo verrebbe caricata all'accesso di ogni utente, amministratori compresi
+$BgInfoDir      = Join-Path $env:ProgramFiles "WindowsBasicSetup\BGInfo"
 $BgInfoRunName  = "WindowsBasicSetupBGInfo"
 
 # Attivita' pianificate che raccolgono e inviano dati di utilizzo (percorso, nome)
@@ -837,7 +839,8 @@ $TweakActions = [ordered]@{
         if ([Environment]::Is64BitOperatingSystem) { $exeName = "Bginfo64.exe" }
         New-Item -ItemType Directory -Force -Path $BgInfoDir | Out-Null
         $exe = Join-Path $BgInfoDir $exeName
-        $tmp = "$exe.download"
+        # Scaricato nella cartella temporanea dell'amministratore, spostato solo dopo la verifica della firma
+        $tmp = Join-Path $env:TEMP "$exeName.download"
         # Sito ufficiale di Sysinternals (Microsoft); l'eseguibile si usa solo se firmato da Microsoft
         Invoke-WebRequest -Uri "https://live.sysinternals.com/$exeName" -OutFile $tmp -UseBasicParsing -ErrorAction Stop
         $sig = Get-AuthenticodeSignature -LiteralPath $tmp
